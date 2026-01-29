@@ -1,0 +1,5 @@
+node_modules/
+extension/dist/
+extension/package-lock.json
+*.xpi
+
