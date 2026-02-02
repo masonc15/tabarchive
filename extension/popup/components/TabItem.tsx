@@ -3,7 +3,7 @@ import type { ArchivedTab } from '../types';
 
 interface TabItemProps {
   tab: ArchivedTab;
-  onRestore: (tab: ArchivedTab) => void;
+  onRestore: (tab: ArchivedTab) => Promise<boolean> | boolean;
 }
 
 function formatTimeAgo(timestamp: number): string {
@@ -33,7 +33,10 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
   const handleRestore = async () => {
     setRestoring(true);
     try {
-      await onRestore(tab);
+      const ok = await onRestore(tab);
+      if (!ok) {
+        setRestoring(false);
+      }
     } catch {
       setRestoring(false);
     }
@@ -65,9 +68,9 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
       aria-label={`Restore tab: ${tab.title}`}
     >
       <div style={styles.favicon}>
-        {tab.favicon_url ? (
+        {tab.faviconUrl ? (
           <img
-            src={tab.favicon_url}
+            src={tab.faviconUrl}
             alt=""
             style={styles.faviconImg}
             onError={(e) => {
@@ -99,7 +102,7 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
         <div style={styles.meta}>
           <span style={styles.domain}>{getDomain(tab.url)}</span>
           <span style={styles.dot}>·</span>
-          <span style={styles.time}>{formatTimeAgo(tab.closed_at)}</span>
+          <span style={styles.time}>{formatTimeAgo(tab.closedAt)}</span>
         </div>
       </div>
 

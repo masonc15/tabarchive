@@ -2,8 +2,9 @@ export interface ArchivedTab {
   id: number;
   url: string;
   title: string;
-  favicon_url?: string;
-  closed_at: number;
+  faviconUrl?: string | null;
+  closedAt: number;
+  restoredAt?: number | null;
 }
 
 export interface AppSettings {

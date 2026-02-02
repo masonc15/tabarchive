@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import browser from 'webextension-polyfill';
 import type { ArchivedTab, AppSettings } from '../types';
 
 interface NativeResponse {
@@ -10,8 +11,8 @@ interface NativeResponse {
   totalArchived?: number;
   totalRestored?: number;
   dbSizeBytes?: number;
-  oldestTab?: number;
-  newestTab?: number;
+  oldestClosedAt?: number | null;
+  newestClosedAt?: number | null;
 }
 
 interface UseNativeMessagingResult {
@@ -20,7 +21,7 @@ interface UseNativeMessagingResult {
   restore: (id: number) => Promise<boolean>;
   deleteTab: (id: number) => Promise<boolean>;
   getRecent: (limit?: number, offset?: number) => Promise<ArchivedTab[]>;
-  getStats: () => Promise<{ totalArchived: number; totalRestored: number; dbSizeBytes: number; oldestTab?: number; newestTab?: number }>;
+  getStats: () => Promise<{ totalArchived: number; totalRestored: number; dbSizeBytes: number; oldestClosedAt?: number | null; newestClosedAt?: number | null }>;
   getSettings: () => Promise<AppSettings>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>;
   archiveCurrentTab: () => Promise<boolean>;
@@ -75,8 +76,8 @@ export function useNativeMessaging(): UseNativeMessagingResult {
       totalArchived: response.totalArchived || 0,
       totalRestored: response.totalRestored || 0,
       dbSizeBytes: response.dbSizeBytes || 0,
-      oldestTab: response.oldestTab,
-      newestTab: response.newestTab,
+      oldestClosedAt: response.oldestClosedAt,
+      newestClosedAt: response.newestClosedAt,
     };
   }, [sendMessage]);
 

@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
+import browser from 'webextension-polyfill';
 import { SearchBar } from './components/SearchBar';
 import { TabList } from './components/TabList';
 import { Settings } from './components/Settings';
@@ -10,7 +11,11 @@ export type { ArchivedTab, AppSettings };
 
 type View = 'search' | 'settings';
 
-function App() {
+type AppProps = {
+  useNativeMessagingHook?: typeof useNativeMessaging;
+};
+
+export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = {}) {
   const [view, setView] = useState<View>('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [tabs, setTabs] = useState<ArchivedTab[]>([]);
@@ -21,7 +26,7 @@ function App() {
     minTabs: 20,
   });
 
-  const { sendMessage, search, restore, getRecent, getSettings, updateSettings, connected, error } = useNativeMessaging();
+  const { sendMessage, search, restore, getRecent, getSettings, updateSettings, connected, error } = useNativeMessagingHook();
 
   const handleSearch = useCallback(async (query: string) => {
     setSearchQuery(query);
@@ -42,13 +47,18 @@ function App() {
     }
   }, [search, getRecent]);
 
-  const handleRestore = useCallback(async (tab: ArchivedTab) => {
+  const handleRestore = useCallback(async (tab: ArchivedTab): Promise<boolean> => {
     try {
-      await restore(tab.id);
+      const ok = await restore(tab.id);
+      if (!ok) {
+        return false;
+      }
       browser.tabs.create({ url: tab.url });
       setTabs(prev => prev.filter(t => t.id !== tab.id));
+      return true;
     } catch (err) {
       console.error('Restore failed:', err);
+      return false;
     }
   }, [restore]);
 
@@ -67,7 +77,7 @@ function App() {
     if (connected) {
       getRecent().then(setTabs).catch(err => console.error('Failed to load tabs:', err));
     }
-  }, [connected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connected, getRecent]);
 
   return (
     <div style={styles.container}>

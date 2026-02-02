@@ -73,6 +73,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
             onClick={handlePausedChange}
             role="switch"
             aria-checked={settings.paused}
+            aria-label="Pause archiving"
           >
             <div
               style={{
@@ -94,6 +95,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
             value={settings.archiveAfterMinutes}
             onChange={handleArchiveAfterChange}
             style={styles.select}
+            aria-label="Archive after"
           >
             {archiveOptions.map(option => (
               <option key={option.value} value={option.value}>
@@ -114,6 +116,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
             value={settings.minTabs}
             onChange={handleMinTabsChange}
             style={styles.select}
+            aria-label="Minimum tabs"
           >
             {minTabsOptions.map(option => (
               <option key={option.value} value={option.value}>

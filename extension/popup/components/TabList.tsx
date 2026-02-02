@@ -6,12 +6,12 @@ import type { ArchivedTab } from '../types';
 interface TabListProps {
   tabs: ArchivedTab[];
   loading: boolean;
-  onRestore: (tab: ArchivedTab) => void;
+  onRestore: (tab: ArchivedTab) => Promise<boolean> | boolean;
 }
 
 interface ItemData {
   tabs: ArchivedTab[];
-  onRestore: (tab: ArchivedTab) => void;
+  onRestore: (tab: ArchivedTab) => Promise<boolean> | boolean;
 }
 
 const ITEM_HEIGHT = 54;
@@ -132,12 +132,16 @@ const styles: Record<string, React.CSSProperties> = {
 
 // Add keyframe animation via style element
 if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement('style');
-  styleSheet.textContent = `
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-  `;
-  document.head.appendChild(styleSheet);
+  const existing = document.getElementById('tabarchive-keyframes');
+  if (!existing) {
+    const styleSheet = document.createElement('style');
+    styleSheet.id = 'tabarchive-keyframes';
+    styleSheet.textContent = `
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(styleSheet);
+  }
 }

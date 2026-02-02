@@ -1,10 +1,15 @@
 const path = require('path');
+const webpack = require('webpack');
 const CopyPlugin = require('copy-webpack-plugin');
+
+const target = process.env.TARGET || 'firefox';
+const manifestFile = target === 'chromium' ? 'manifest.chromium.json' : 'manifest.json';
+const isTest = process.env.TABARCHIVE_TEST === '1';
 
 module.exports = {
   entry: {
     popup: './popup/popup.tsx',
-    background: './background.js',
+    background: './background.ts',
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -27,9 +32,12 @@ module.exports = {
     ],
   },
   plugins: [
+    new webpack.DefinePlugin({
+      __TABARCHIVE_TEST__: JSON.stringify(isTest),
+    }),
     new CopyPlugin({
       patterns: [
-        { from: 'manifest.json', to: 'manifest.json' },
+        { from: manifestFile, to: 'manifest.json' },
         { from: 'popup/popup.html', to: 'popup/popup.html' },
         { from: 'icons', to: 'icons', noErrorOnMissing: true },
       ],
