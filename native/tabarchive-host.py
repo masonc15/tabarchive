@@ -110,25 +110,40 @@ def init_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def read_message() -> dict[str, Any] | None:
-    """Read a length-prefixed JSON message from stdin."""
-    raw_length = sys.stdin.buffer.read(4)
+def encode_message(message: dict[str, Any]) -> bytes:
+    """Encode a message with a little-endian length prefix."""
+    encoded = json.dumps(message).encode("utf-8")
+    return struct.pack("<I", len(encoded)) + encoded
+
+
+def read_message_from(stream) -> dict[str, Any] | None:
+    """Read a length-prefixed JSON message from a stream."""
+    raw_length = stream.read(4)
     if len(raw_length) == 0:
         return None
     if len(raw_length) != 4:
         raise EOFError("Failed to read message length")
 
-    message_length = struct.unpack("@I", raw_length)[0]
-    message = sys.stdin.buffer.read(message_length).decode("utf-8")
+    message_length = struct.unpack("<I", raw_length)[0]
+    message = stream.read(message_length).decode("utf-8")
     return json.loads(message)
+
+
+def send_message_to(message: dict[str, Any], stream) -> None:
+    """Send a length-prefixed JSON message to a stream."""
+    encoded = encode_message(message)
+    stream.write(encoded)
+    stream.flush()
+
+
+def read_message() -> dict[str, Any] | None:
+    """Read a length-prefixed JSON message from stdin."""
+    return read_message_from(sys.stdin.buffer)
 
 
 def send_message(message: dict[str, Any]) -> None:
     """Send a length-prefixed JSON message to stdout."""
-    encoded = json.dumps(message).encode("utf-8")
-    sys.stdout.buffer.write(struct.pack("@I", len(encoded)))
-    sys.stdout.buffer.write(encoded)
-    sys.stdout.buffer.flush()
+    send_message_to(message, sys.stdout.buffer)
 
 
 def handle_archive(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, Any]:
