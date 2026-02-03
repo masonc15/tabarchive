@@ -3,6 +3,8 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 
+declare const chrome: any;
+
 const extensionPath = path.resolve(__dirname, '../../dist');
 
 async function launchExtension(): Promise<{ context: BrowserContext; extensionId: string }> {
