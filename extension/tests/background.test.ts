@@ -358,6 +358,7 @@ describe('archiveTab', () => {
       faviconUrl: 'https://example.com/icon.png',
     });
     expect(browserMock.tabs.remove).toHaveBeenCalledWith(5);
+    expect(browserMock.action.setBadgeText).toHaveBeenCalledWith({ text: '1' });
   });
 
   it('uses url as title fallback when title is missing', async () => {
@@ -483,6 +484,49 @@ describe('handleMessage routing', () => {
 
     expect(result.ok).toBe(true);
     expect(result.totalArchived).toBe(10);
+    expect(browserMock.action.setBadgeText).toHaveBeenCalledWith({ text: '10' });
+  });
+
+  it('stats: caps badge text at 999+', async () => {
+    setNativeMessageHandlerForTests(async () => ({ ok: true, totalArchived: 1234 }));
+
+    await onMessageHandler({ action: 'stats' });
+
+    expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '999+' });
+  });
+
+  it('restore: decrements badge count after success', async () => {
+    setNativeMessageHandlerForTests(async (msg) => {
+      if (msg.action === 'stats') {
+        return { ok: true, totalArchived: 2 };
+      }
+      if (msg.action === 'restore') {
+        return { ok: true, restored: 1, url: 'https://restored.com' };
+      }
+      return { ok: false, error: 'unexpected action' };
+    });
+
+    await onMessageHandler({ action: 'stats' });
+    await onMessageHandler({ action: 'restore', id: 42 });
+
+    expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '1' });
+  });
+
+  it('delete: decrements badge count after success', async () => {
+    setNativeMessageHandlerForTests(async (msg) => {
+      if (msg.action === 'stats') {
+        return { ok: true, totalArchived: 2 };
+      }
+      if (msg.action === 'delete') {
+        return { ok: true, deleted: 1 };
+      }
+      return { ok: false, error: 'unexpected action' };
+    });
+
+    await onMessageHandler({ action: 'stats' });
+    await onMessageHandler({ action: 'delete', id: 7 });
+
+    expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '1' });
   });
 
   it('export: forwards action', async () => {

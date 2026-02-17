@@ -17,6 +17,10 @@ const browserMock = {
     onUpdated: { addListener: vi.fn() },
     onRemoved: { addListener: vi.fn() },
   },
+  action: {
+    setBadgeText: vi.fn(async () => {}),
+    setBadgeBackgroundColor: vi.fn(async () => {}),
+  },
   storage: {
     sync: {
       get: vi.fn(async () => ({})),

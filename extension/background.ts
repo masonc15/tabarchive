@@ -8,6 +8,8 @@ const NATIVE_REQUEST_TIMEOUT_MS = 30000;
 const INACTIVE_CHECK_INTERVAL_MS = 60000;
 const BASE_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30000;
+const BADGE_BACKGROUND_COLOR = '#1b4d9b';
+const BADGE_MAX_DISPLAY_COUNT = 999;
 
 const DEFAULT_SETTINGS: AppSettings = {
   archiveAfterMinutes: 720,
@@ -32,6 +34,8 @@ let pendingRequests = new Map<number, PendingRequest>();
 let requestId = 0;
 let reconnectAttempts = 0;
 let inactiveCheckInProgress = false;
+let archivedCount = 0;
+let badgeStyleInitialized = false;
 
 const mockState = IS_TEST ? createMockState() : null;
 
@@ -53,6 +57,8 @@ export function resetStateForTests() {
   requestId = 0;
   reconnectAttempts = 0;
   inactiveCheckInProgress = false;
+  archivedCount = 0;
+  badgeStyleInitialized = false;
   if (IS_TEST && mockState) {
     mockState.reset();
     nativeMessageHandler = mockState.handleMessage;
@@ -83,6 +89,54 @@ export function normalizeSettings(input: Partial<AppSettings>): AppSettings {
     paused,
     minTabs,
   };
+}
+
+function normalizeArchivedCount(input: unknown): number {
+  const parsed = Number(input);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(parsed));
+}
+
+function formatBadgeText(count: number): string {
+  if (count > BADGE_MAX_DISPLAY_COUNT) {
+    return `${BADGE_MAX_DISPLAY_COUNT}+`;
+  }
+  return String(count);
+}
+
+async function ensureBadgeStyle() {
+  if (badgeStyleInitialized) {
+    return;
+  }
+  await browser.action.setBadgeBackgroundColor({ color: BADGE_BACKGROUND_COLOR });
+  badgeStyleInitialized = true;
+}
+
+async function setArchivedBadgeCount(count: number) {
+  archivedCount = normalizeArchivedCount(count);
+  try {
+    await ensureBadgeStyle();
+    await browser.action.setBadgeText({ text: formatBadgeText(archivedCount) });
+  } catch (e) {
+    console.error('Failed to update extension badge:', e);
+  }
+}
+
+async function adjustArchivedBadgeCount(delta: number) {
+  await setArchivedBadgeCount(archivedCount + delta);
+}
+
+async function syncArchivedBadgeCountFromNative() {
+  try {
+    const response = await sendNativeMessage({ action: 'stats' });
+    if (response?.ok) {
+      await setArchivedBadgeCount(response.totalArchived);
+    }
+  } catch (e) {
+    console.error('Failed to sync archived count badge:', e);
+  }
 }
 
 async function loadSettings() {
@@ -118,7 +172,7 @@ function connectNative() {
     });
 
     connectedPort.onDisconnect.addListener(() => {
-      const error = browser.runtime.lastError?.message;
+      const error = (connectedPort as any).error?.message || browser.runtime.lastError?.message;
       console.log('Disconnected from native host:', error);
       port = null;
       pendingRequests.forEach(({ reject, timeoutId }) => {
@@ -143,10 +197,16 @@ function connectNative() {
   }
 }
 
-async function realSendNativeMessage(message: Record<string, any>) {
+async function realSendNativeMessage(message: Record<string, any>, retriesLeft = 2): Promise<any> {
   return new Promise((resolve, reject) => {
     const p = connectNative();
     if (!p) {
+      if (retriesLeft > 0) {
+        setTimeout(() => {
+          realSendNativeMessage(message, retriesLeft - 1).then(resolve, reject);
+        }, 500);
+        return;
+      }
       reject(new Error('Failed to connect to native host'));
       return;
     }
@@ -197,6 +257,7 @@ async function archiveTab(tab: browser.tabs.Tab) {
     if (response.ok) {
       await browser.tabs.remove(tab.id);
       tabLastActive.delete(tab.id);
+      await adjustArchivedBadgeCount(1);
       console.log('Archived tab:', tab.title);
     }
   } catch (e) {
@@ -312,19 +373,40 @@ async function handleMessage(message: Record<string, any>) {
           action: 'restore',
           id: message.id,
         });
+        if (response?.ok) {
+          const restoredCount =
+            typeof response.restored === 'number'
+              ? normalizeArchivedCount(response.restored)
+              : 1;
+          await adjustArchivedBadgeCount(-restoredCount);
+        }
         return response;
       } catch (e) {
         return { ok: false, error: (e as Error).message };
       }
 
-    case 'delete':
-      return sendNativeMessage({
+    case 'delete': {
+      const response = await sendNativeMessage({
         action: 'delete',
         id: message.id,
       });
+      if (response?.ok) {
+        const deletedCount =
+          typeof response.deleted === 'number'
+            ? normalizeArchivedCount(response.deleted)
+            : 1;
+        await adjustArchivedBadgeCount(-deletedCount);
+      }
+      return response;
+    }
 
-    case 'stats':
-      return sendNativeMessage({ action: 'stats' });
+    case 'stats': {
+      const response = await sendNativeMessage({ action: 'stats' });
+      if (response?.ok) {
+        await setArchivedBadgeCount(response.totalArchived);
+      }
+      return response;
+    }
 
     case 'export':
       return sendNativeMessage({ action: 'export' });
@@ -361,6 +443,9 @@ async function init() {
       tabLastActive.set(tab.id, now);
     }
   });
+
+  await setArchivedBadgeCount(0);
+  await syncArchivedBadgeCountFromNative();
 
   if (!IS_TEST) {
     connectNative();
