@@ -13,14 +13,21 @@ interface NativeResponse {
   dbSizeBytes?: number;
   oldestClosedAt?: number | null;
   newestClosedAt?: number | null;
+  hasMore?: boolean;
+  nextOffset?: number;
+}
+
+export interface PaginatedResult {
+  tabs: ArchivedTab[];
+  hasMore: boolean;
 }
 
 interface UseNativeMessagingResult {
   sendMessage: (message: Record<string, unknown>) => Promise<NativeResponse>;
-  search: (query: string, limit?: number, offset?: number) => Promise<ArchivedTab[]>;
+  search: (query: string, limit?: number, offset?: number) => Promise<PaginatedResult>;
   restore: (id: number) => Promise<boolean>;
   deleteTab: (id: number) => Promise<boolean>;
-  getRecent: (limit?: number, offset?: number) => Promise<ArchivedTab[]>;
+  getRecent: (limit?: number, offset?: number) => Promise<PaginatedResult>;
   getStats: () => Promise<{ totalArchived: number; totalRestored: number; dbSizeBytes: number; oldestClosedAt?: number | null; newestClosedAt?: number | null }>;
   getSettings: () => Promise<AppSettings>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>;
@@ -50,9 +57,12 @@ export function useNativeMessaging(): UseNativeMessagingResult {
     }
   }, []);
 
-  const search = useCallback(async (query: string, limit = 50, offset = 0): Promise<ArchivedTab[]> => {
+  const search = useCallback(async (query: string, limit = 100, offset = 0): Promise<PaginatedResult> => {
     const response = await sendMessage({ action: 'search', query, limit, offset });
-    return response.ok && response.tabs ? response.tabs : [];
+    return {
+      tabs: response.ok && response.tabs ? response.tabs : [],
+      hasMore: response.hasMore === true,
+    };
   }, [sendMessage]);
 
   const restore = useCallback(async (id: number): Promise<boolean> => {
@@ -65,9 +75,12 @@ export function useNativeMessaging(): UseNativeMessagingResult {
     return response.ok === true;
   }, [sendMessage]);
 
-  const getRecent = useCallback(async (limit = 50, offset = 0): Promise<ArchivedTab[]> => {
+  const getRecent = useCallback(async (limit = 100, offset = 0): Promise<PaginatedResult> => {
     const response = await sendMessage({ action: 'recent', limit, offset });
-    return response.ok && response.tabs ? response.tabs : [];
+    return {
+      tabs: response.ok && response.tabs ? response.tabs : [],
+      hasMore: response.hasMore === true,
+    };
   }, [sendMessage]);
 
   const getStats = useCallback(async () => {

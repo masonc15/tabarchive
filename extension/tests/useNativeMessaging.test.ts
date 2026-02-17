@@ -88,9 +88,9 @@ describe('useNativeMessaging', () => {
       tabs = await result.current.search('example');
     });
 
-    expect(tabs).toEqual(mockTabs);
+    expect(tabs).toEqual({ tabs: mockTabs, hasMore: false });
     expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'search', query: 'example', limit: 50, offset: 0 })
+      expect.objectContaining({ action: 'search', query: 'example', limit: 100, offset: 0 })
     );
   });
 
@@ -105,7 +105,7 @@ describe('useNativeMessaging', () => {
       tabs = await result.current.search('query');
     });
 
-    expect(tabs).toEqual([]);
+    expect(tabs).toEqual({ tabs: [], hasMore: false });
   });
 
   it('restore returns true on success', async () => {
@@ -168,9 +168,9 @@ describe('useNativeMessaging', () => {
       tabs = await result.current.getRecent();
     });
 
-    expect(tabs).toEqual(mockTabs);
+    expect(tabs).toEqual({ tabs: mockTabs, hasMore: false });
     expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'recent', limit: 50, offset: 0 })
+      expect.objectContaining({ action: 'recent', limit: 100, offset: 0 })
     );
   });
 

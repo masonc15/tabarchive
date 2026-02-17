@@ -19,10 +19,10 @@ const defaultSettings = {
 function createMocks(overrides: Record<string, unknown> = {}) {
   const mocks = {
     sendMessage: vi.fn().mockResolvedValue({ ok: true }),
-    search: vi.fn().mockResolvedValue([]),
+    search: vi.fn().mockResolvedValue({ tabs: [], hasMore: false }),
     restore: vi.fn().mockResolvedValue(false),
     deleteTab: vi.fn(),
-    getRecent: vi.fn().mockResolvedValue([sampleTab]),
+    getRecent: vi.fn().mockResolvedValue({ tabs: [sampleTab], hasMore: false }),
     getStats: vi.fn(),
     getSettings: vi.fn().mockResolvedValue(defaultSettings),
     updateSettings: vi.fn().mockResolvedValue(defaultSettings),
@@ -36,7 +36,7 @@ function createMocks(overrides: Record<string, unknown> = {}) {
 }
 
 vi.mock('../popup/components/TabList', () => ({
-  TabList: ({ tabs, loading, onRestore }: { tabs: any[]; loading: boolean; onRestore: (t: any) => Promise<boolean> }) => (
+  TabList: ({ tabs, loading, onRestore }: { tabs: any[]; loading: boolean; onRestore: (t: any) => Promise<boolean>; loadMore: () => void; hasMore: boolean; loadingMore: boolean }) => (
     <div data-testid="tab-list" data-loading={loading}>
       {tabs.map((t) => (
         <button key={t.id} onClick={() => onRestore(t)}>
@@ -185,9 +185,9 @@ describe('Popup App', () => {
 
   it('triggers search when search bar value changes', async () => {
     const { mocks, hook } = createMocks({
-      search: vi.fn().mockResolvedValue([
+      search: vi.fn().mockResolvedValue({ tabs: [
         { id: 2, url: 'https://found.com', title: 'Found', closedAt: Date.now() },
-      ]),
+      ], hasMore: false }),
     });
 
     await act(async () => {
@@ -206,7 +206,7 @@ describe('Popup App', () => {
       await Promise.resolve();
     });
 
-    expect(mocks.search).toHaveBeenCalledWith('found');
+    expect(mocks.search).toHaveBeenCalledWith('found', 100);
   });
 
   it('loads recent tabs when search query is cleared', async () => {

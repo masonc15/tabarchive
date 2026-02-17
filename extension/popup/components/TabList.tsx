@@ -1,5 +1,5 @@
-import React, { memo } from 'react';
-import { FixedSizeList as List, ListChildComponentProps } from 'react-window';
+import React, { memo, useCallback } from 'react';
+import { FixedSizeList as List, ListChildComponentProps, ListOnItemsRenderedProps } from 'react-window';
 import { TabItem } from './TabItem';
 import type { ArchivedTab } from '../types';
 
@@ -7,24 +7,48 @@ interface TabListProps {
   tabs: ArchivedTab[];
   loading: boolean;
   onRestore: (tab: ArchivedTab) => Promise<boolean> | boolean;
+  loadMore: () => void;
+  hasMore: boolean;
+  loadingMore: boolean;
 }
 
 interface ItemData {
   tabs: ArchivedTab[];
   onRestore: (tab: ArchivedTab) => Promise<boolean> | boolean;
+  hasMore: boolean;
 }
 
 const ITEM_HEIGHT = 54;
 const LIST_HEIGHT = 400;
+const LOAD_MORE_THRESHOLD = 10;
 
-const Row = memo(({ index, style, data }: ListChildComponentProps<ItemData>) => (
-  <div style={style}>
-    <TabItem tab={data.tabs[index]} onRestore={data.onRestore} />
-  </div>
-));
+const Row = memo(({ index, style, data }: ListChildComponentProps<ItemData>) => {
+  if (index >= data.tabs.length) {
+    return (
+      <div style={{ ...style, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={loadingRowStyles.container}>
+          <div style={loadingRowStyles.spinner} />
+          <span style={loadingRowStyles.text}>Loading more...</span>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={style}>
+      <TabItem tab={data.tabs[index]} onRestore={data.onRestore} />
+    </div>
+  );
+});
 
-export function TabList({ tabs, loading, onRestore }: TabListProps) {
-  const itemData = React.useMemo(() => ({ tabs, onRestore }), [tabs, onRestore]);
+export function TabList({ tabs, loading, onRestore, loadMore, hasMore, loadingMore }: TabListProps) {
+  const itemData = React.useMemo(() => ({ tabs, onRestore, hasMore }), [tabs, onRestore, hasMore]);
+  const itemCount = tabs.length + (hasMore ? 1 : 0);
+
+  const handleItemsRendered = useCallback(({ visibleStopIndex }: ListOnItemsRenderedProps) => {
+    if (hasMore && !loadingMore && visibleStopIndex >= tabs.length - LOAD_MORE_THRESHOLD) {
+      loadMore();
+    }
+  }, [hasMore, loadingMore, tabs.length, loadMore]);
 
   if (loading) {
     return (
@@ -70,15 +94,38 @@ export function TabList({ tabs, loading, onRestore }: TabListProps) {
       <List
         height={LIST_HEIGHT}
         width="100%"
-        itemCount={tabs.length}
+        itemCount={itemCount}
         itemSize={ITEM_HEIGHT}
         itemData={itemData}
+        onItemsRendered={handleItemsRendered}
       >
         {Row}
       </List>
     </div>
   );
 }
+
+const loadingRowStyles: Record<string, React.CSSProperties> = {
+  container: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    color: '#71717a',
+    fontSize: '13px',
+  },
+  spinner: {
+    width: '16px',
+    height: '16px',
+    border: '2px solid #3b3b5c',
+    borderTopColor: '#7c7cff',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+  },
+  text: {
+    color: '#71717a',
+  },
+};
 
 const styles: Record<string, React.CSSProperties> = {
   container: {

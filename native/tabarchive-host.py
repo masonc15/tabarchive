@@ -24,6 +24,7 @@ DEFAULT_QUERY_LIMIT = 100
 DEFAULT_EXPORT_CHUNK = 5000
 MAX_LOG_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 3
+MAX_FAVICON_BYTES = 2048  # strip data URIs larger than this
 
 DATA_DIR = Path.home() / ".tabarchive"
 DB_PATH = DATA_DIR / "tabs.db"
@@ -146,6 +147,15 @@ def send_message(message: dict[str, Any]) -> None:
     send_message_to(message, sys.stdout.buffer)
 
 
+def compact_favicon(favicon_url: str | None) -> str | None:
+    """Strip oversized data URIs to keep responses within native messaging limits."""
+    if not favicon_url:
+        return None
+    if len(favicon_url) > MAX_FAVICON_BYTES and favicon_url.startswith("data:"):
+        return None
+    return favicon_url
+
+
 def handle_archive(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, Any]:
     """Archive a single tab or batch of tabs."""
     tabs = data.get("tabs", [])
@@ -205,7 +215,7 @@ def handle_search(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, A
         ORDER BY t.closed_at DESC
         LIMIT ? OFFSET ?
         """,
-        (fts_query, limit, offset),
+        (fts_query, limit + 1, offset),
     )
 
     tabs = []
@@ -214,12 +224,21 @@ def handle_search(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, A
             "id": row["id"],
             "url": row["url"],
             "title": row["title"],
-            "faviconUrl": row["favicon_url"],
+            "faviconUrl": compact_favicon(row["favicon_url"]),
             "closedAt": row["closed_at"],
             "metadata": json.loads(row["metadata"]) if row["metadata"] else None,
         })
 
-    return {"ok": True, "tabs": tabs, "count": len(tabs)}
+    has_more = len(tabs) > limit
+    if has_more:
+        tabs = tabs[:limit]
+
+    result: dict[str, Any] = {"ok": True, "tabs": tabs, "count": len(tabs)}
+    if has_more:
+        result["hasMore"] = True
+        result["nextOffset"] = offset + limit
+
+    return result
 
 
 def handle_recent(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, Any]:
@@ -235,7 +254,7 @@ def handle_recent(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, A
         ORDER BY closed_at DESC
         LIMIT ? OFFSET ?
         """,
-        (limit, offset),
+        (limit + 1, offset),
     )
 
     tabs = []
@@ -244,12 +263,21 @@ def handle_recent(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, A
             "id": row["id"],
             "url": row["url"],
             "title": row["title"],
-            "faviconUrl": row["favicon_url"],
+            "faviconUrl": compact_favicon(row["favicon_url"]),
             "closedAt": row["closed_at"],
             "metadata": json.loads(row["metadata"]) if row["metadata"] else None,
         })
 
-    return {"ok": True, "tabs": tabs, "count": len(tabs)}
+    has_more = len(tabs) > limit
+    if has_more:
+        tabs = tabs[:limit]
+
+    result: dict[str, Any] = {"ok": True, "tabs": tabs, "count": len(tabs)}
+    if has_more:
+        result["hasMore"] = True
+        result["nextOffset"] = offset + limit
+
+    return result
 
 
 def handle_restore(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, Any]:
@@ -373,7 +401,7 @@ def handle_export(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, A
             "id": row["id"],
             "url": row["url"],
             "title": row["title"],
-            "faviconUrl": row["favicon_url"],
+            "faviconUrl": compact_favicon(row["favicon_url"]),
             "closedAt": row["closed_at"],
             "restoredAt": row["restored_at"],
             "metadata": json.loads(row["metadata"]) if row["metadata"] else None,

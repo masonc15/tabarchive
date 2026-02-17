@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import browser from 'webextension-polyfill';
 import { SearchBar } from './components/SearchBar';
@@ -8,6 +8,8 @@ import { useNativeMessaging } from './hooks/useNativeMessaging';
 import { ArchivedTab, AppSettings } from './types';
 
 export type { ArchivedTab, AppSettings };
+
+const PAGE_SIZE = 100;
 
 type View = 'search' | 'settings';
 
@@ -20,6 +22,11 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   const [searchQuery, setSearchQuery] = useState('');
   const [tabs, setTabs] = useState<ArchivedTab[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const offsetRef = useRef(0);
+  const searchQueryRef = useRef('');
+  const loadingMoreRef = useRef(false);
   const [settings, setSettings] = useState<AppSettings>({
     archiveAfterMinutes: 720,
     paused: false,
@@ -30,20 +37,42 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
 
   const handleSearch = useCallback(async (query: string) => {
     setSearchQuery(query);
+    searchQueryRef.current = query;
     setLoading(true);
+    offsetRef.current = 0;
 
     try {
-      if (query.trim()) {
-        const results = await search(query);
-        setTabs(results);
-      } else {
-        const results = await getRecent();
-        setTabs(results);
-      }
+      const result = query.trim()
+        ? await search(query, PAGE_SIZE)
+        : await getRecent(PAGE_SIZE);
+      setTabs(result.tabs);
+      setHasMore(result.hasMore);
+      offsetRef.current = result.tabs.length;
     } catch (err) {
       console.error('Search failed:', err);
     } finally {
       setLoading(false);
+    }
+  }, [search, getRecent]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+
+    try {
+      const query = searchQueryRef.current;
+      const result = query.trim()
+        ? await search(query, PAGE_SIZE, offsetRef.current)
+        : await getRecent(PAGE_SIZE, offsetRef.current);
+      setTabs(prev => [...prev, ...result.tabs]);
+      setHasMore(result.hasMore);
+      offsetRef.current += result.tabs.length;
+    } catch (err) {
+      console.error('Load more failed:', err);
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
     }
   }, [search, getRecent]);
 
@@ -75,7 +104,11 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
 
   React.useEffect(() => {
     if (connected) {
-      getRecent().then(setTabs).catch(err => console.error('Failed to load tabs:', err));
+      getRecent(PAGE_SIZE).then(result => {
+        setTabs(result.tabs);
+        setHasMore(result.hasMore);
+        offsetRef.current = result.tabs.length;
+      }).catch(err => console.error('Failed to load tabs:', err));
     }
   }, [connected, getRecent]);
 
@@ -128,6 +161,9 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
             tabs={tabs}
             loading={loading}
             onRestore={handleRestore}
+            loadMore={loadMore}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
           />
         </>
       )}
