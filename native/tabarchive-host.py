@@ -348,6 +348,20 @@ def handle_delete(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, A
     return {"ok": True, "deleted": cursor.rowcount}
 
 
+def handle_clear(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, Any]:
+    """Clear archived tabs, optionally including restored rows."""
+    include_restored = data.get("includeRestored", True)
+    include_restored = bool(include_restored)
+
+    if include_restored:
+        cursor = conn.execute("DELETE FROM tabs")
+    else:
+        cursor = conn.execute("DELETE FROM tabs WHERE restored_at IS NULL")
+
+    conn.commit()
+    return {"ok": True, "deleted": cursor.rowcount}
+
+
 def handle_stats(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, Any]:
     """Get archive statistics."""
     cursor = conn.execute("""
@@ -366,7 +380,7 @@ def handle_stats(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, An
     except OSError:
         db_size = 0
 
-    return {
+    result: dict[str, Any] = {
         "ok": True,
         "totalArchived": row["archived"] or 0,
         "totalRestored": row["restored"] or 0,
@@ -376,6 +390,26 @@ def handle_stats(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, An
         "dbPath": str(DB_PATH),
         "dbSizeBytes": db_size,
     }
+
+    since_closed_at = data.get("sinceClosedAt")
+    try:
+        if since_closed_at is not None:
+            since_closed_at_value = int(since_closed_at)
+            unseen_row = conn.execute(
+                """
+                SELECT COUNT(*) as unseen
+                FROM tabs
+                WHERE restored_at IS NULL
+                AND closed_at > ?
+                """,
+                (since_closed_at_value,),
+            ).fetchone()
+            result["unseenArchived"] = unseen_row["unseen"] if unseen_row else 0
+    except (TypeError, ValueError):
+        # Keep backward-compatible stats responses even with malformed input.
+        pass
+
+    return result
 
 
 def handle_export(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, Any]:
@@ -468,6 +502,7 @@ HANDLERS = {
     "recent": handle_recent,
     "restore": handle_restore,
     "delete": handle_delete,
+    "clear": handle_clear,
     "stats": handle_stats,
     "export": handle_export,
     "import": handle_import,

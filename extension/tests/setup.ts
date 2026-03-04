@@ -22,6 +22,10 @@ const browserMock = {
     setBadgeBackgroundColor: vi.fn(async () => {}),
   },
   storage: {
+    local: {
+      get: vi.fn(async (_keys?: string | string[] | Record<string, unknown> | null) => ({})),
+      set: vi.fn(async () => {}),
+    },
     sync: {
       get: vi.fn(async () => ({})),
       set: vi.fn(async () => {}),

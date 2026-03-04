@@ -161,4 +161,120 @@ describe('Settings', () => {
     });
     expect(screen.getByText('Unknown')).toBeInTheDocument();
   });
+
+  it('exports archived tabs as JSON', async () => {
+    const user = userEvent.setup();
+    const sendMessage = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        totalArchived: 2,
+        totalRestored: 1,
+        dbSizeBytes: 1024,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tabs: [{ id: 1, url: 'https://example.com', title: 'Example', closedAt: 1000 }],
+        count: 1,
+      });
+
+    const createUrlSpy = vi.fn(() => 'blob:tabarchive');
+    const revokeUrlSpy = vi.fn();
+    const originalCreateObjectURL = (URL as any).createObjectURL;
+    const originalRevokeObjectURL = (URL as any).revokeObjectURL;
+    (URL as any).createObjectURL = createUrlSpy;
+    (URL as any).revokeObjectURL = revokeUrlSpy;
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    renderSettings({ sendMessage });
+
+    await user.click(screen.getByRole('button', { name: 'Export archive data' }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith({
+        action: 'export',
+        includeRestored: true,
+        chunkSize: 2000,
+        offset: 0,
+      });
+    });
+    expect(clickSpy).toHaveBeenCalled();
+    expect(createUrlSpy).toHaveBeenCalled();
+    expect(revokeUrlSpy).toHaveBeenCalled();
+    expect(screen.getByText('Exported 1 tabs.')).toBeInTheDocument();
+
+    (URL as any).createObjectURL = originalCreateObjectURL;
+    (URL as any).revokeObjectURL = originalRevokeObjectURL;
+  });
+
+  it('clears archived tabs after confirmation', async () => {
+    const user = userEvent.setup();
+    const sendMessage = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        totalArchived: 4,
+        totalRestored: 1,
+        dbSizeBytes: 1024,
+      })
+      .mockResolvedValueOnce({ ok: true, deleted: 4 })
+      .mockResolvedValueOnce({
+        ok: true,
+        totalArchived: 0,
+        totalRestored: 5,
+        dbSizeBytes: 512,
+      });
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderSettings({ sendMessage });
+    await user.click(screen.getByRole('button', { name: 'Clear archived tabs' }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith({
+        action: 'clearAll',
+        includeRestored: true,
+      });
+    });
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(screen.getByText('Deleted 4 archived tabs.')).toBeInTheDocument();
+  });
+
+  it('does not clear archived tabs when confirmation is canceled', async () => {
+    const user = userEvent.setup();
+    const sendMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      totalArchived: 2,
+      totalRestored: 0,
+      dbSizeBytes: 1024,
+    });
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    renderSettings({ sendMessage });
+    await user.click(screen.getByRole('button', { name: 'Clear archived tabs' }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalledWith({
+      action: 'clearAll',
+      includeRestored: true,
+    });
+  });
+
+  it('resets settings to defaults', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    renderSettings({
+      settings: { archiveAfterMinutes: 43200, paused: true, minTabs: 50 },
+      onChange,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Reset settings' }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      archiveAfterMinutes: 720,
+      paused: false,
+      minTabs: 20,
+    });
+    expect(screen.getByText('Settings reset to defaults.')).toBeInTheDocument();
+  });
 });

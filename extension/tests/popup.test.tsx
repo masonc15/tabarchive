@@ -60,6 +60,26 @@ vi.mock('../popup/components/SearchBar', () => ({
 }));
 
 describe('Popup App', () => {
+  it('notifies background when popup opens and closes', async () => {
+    const browserMock = (globalThis as any).__browserMock__;
+    const { hook } = createMocks();
+    const { unmount } = render(<App useNativeMessagingHook={hook} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith({ action: 'popupOpened' });
+
+    unmount();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith({ action: 'popupClosed' });
+  });
+
   it('does not remove tab from list when restore fails', async () => {
     const browserMock = (globalThis as any).__browserMock__;
     const { mocks, hook } = createMocks();

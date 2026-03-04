@@ -1,3 +1,4 @@
+import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkInactiveTabs,
@@ -344,6 +345,9 @@ describe('archiveTab', () => {
     const messages: any[] = [];
     setNativeMessageHandlerForTests(async (msg) => {
       messages.push(msg);
+      if (msg.action === 'stats') {
+        return { ok: true, totalArchived: 10, unseenArchived: 10 };
+      }
       return { ok: true };
     });
 
@@ -439,8 +443,14 @@ describe('handleMessage routing', () => {
 
   it('restore: forwards id and returns response', async () => {
     setNativeMessageHandlerForTests(async (msg) => {
-      expect(msg.id).toBe(42);
-      return { ok: true, restored: 1, url: 'https://restored.com' };
+      if (msg.action === 'restore') {
+        expect(msg.id).toBe(42);
+        return { ok: true, restored: 1, url: 'https://restored.com' };
+      }
+      if (msg.action === 'stats') {
+        return { ok: true, totalArchived: 1, unseenArchived: 0 };
+      }
+      return { ok: false, error: `unexpected action: ${msg.action}` };
     });
 
     const result = await onMessageHandler({ action: 'restore', id: 42 });
@@ -474,31 +484,37 @@ describe('handleMessage routing', () => {
     expect(messages[0]).toMatchObject({ action: 'delete', id: 7 });
   });
 
-  it('stats: forwards action', async () => {
+  it('stats: forwards action with unseen threshold and uses unseen badge count', async () => {
     setNativeMessageHandlerForTests(async (msg) => {
       expect(msg.action).toBe('stats');
-      return { ok: true, totalArchived: 10 };
+      expect(msg.sinceClosedAt).toBe(0);
+      return { ok: true, totalArchived: 10, unseenArchived: 3 };
     });
 
     const result = await onMessageHandler({ action: 'stats' });
 
     expect(result.ok).toBe(true);
     expect(result.totalArchived).toBe(10);
-    expect(browserMock.action.setBadgeText).toHaveBeenCalledWith({ text: '10' });
+    expect(browserMock.action.setBadgeText).toHaveBeenCalledWith({ text: '3' });
   });
 
   it('stats: caps badge text at 999+', async () => {
-    setNativeMessageHandlerForTests(async () => ({ ok: true, totalArchived: 1234 }));
+    setNativeMessageHandlerForTests(async () => ({ ok: true, totalArchived: 5000, unseenArchived: 1234 }));
 
     await onMessageHandler({ action: 'stats' });
 
     expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '999+' });
   });
 
-  it('restore: decrements badge count after success', async () => {
+  it('restore: resyncs badge using unseen count after success', async () => {
+    const seenSinceCalls: number[] = [];
     setNativeMessageHandlerForTests(async (msg) => {
       if (msg.action === 'stats') {
-        return { ok: true, totalArchived: 2 };
+        seenSinceCalls.push(msg.sinceClosedAt);
+        if (seenSinceCalls.length === 1) {
+          return { ok: true, totalArchived: 5, unseenArchived: 2 };
+        }
+        return { ok: true, totalArchived: 4, unseenArchived: 1 };
       }
       if (msg.action === 'restore') {
         return { ok: true, restored: 1, url: 'https://restored.com' };
@@ -510,12 +526,17 @@ describe('handleMessage routing', () => {
     await onMessageHandler({ action: 'restore', id: 42 });
 
     expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '1' });
+    expect(seenSinceCalls).toEqual([0, 0]);
   });
 
-  it('delete: decrements badge count after success', async () => {
+  it('delete: resyncs badge using unseen count after success', async () => {
+    let statsCalls = 0;
     setNativeMessageHandlerForTests(async (msg) => {
       if (msg.action === 'stats') {
-        return { ok: true, totalArchived: 2 };
+        statsCalls += 1;
+        return statsCalls === 1
+          ? { ok: true, totalArchived: 8, unseenArchived: 3 }
+          : { ok: true, totalArchived: 7, unseenArchived: 2 };
       }
       if (msg.action === 'delete') {
         return { ok: true, deleted: 1 };
@@ -526,18 +547,121 @@ describe('handleMessage routing', () => {
     await onMessageHandler({ action: 'stats' });
     await onMessageHandler({ action: 'delete', id: 7 });
 
-    expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '1' });
+    expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '2' });
+  });
+
+  it('popupOpened: resets unseen badge after dwell and persists last-seen timestamp', async () => {
+    vi.useFakeTimers();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+
+    await onMessageHandler({ action: 'popupOpened' });
+
+    act(() => {
+      vi.advanceTimersByTime(1499);
+    });
+    expect(browserMock.action.setBadgeText).not.toHaveBeenCalledWith({ text: '0' });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await Promise.resolve();
+    });
+
+    expect(browserMock.storage.local.set).toHaveBeenCalledWith({ badgeLastSeenAt: 1_700_000_000_000 });
+    expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '0' });
+
+    nowSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('popupClosed: cancels dwell reset when closed early', async () => {
+    vi.useFakeTimers();
+
+    await onMessageHandler({ action: 'popupOpened' });
+    await onMessageHandler({ action: 'popupClosed' });
+
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+      await Promise.resolve();
+    });
+
+    expect(browserMock.storage.local.set).not.toHaveBeenCalled();
+    expect(browserMock.action.setBadgeText).not.toHaveBeenCalledWith({ text: '0' });
+
+    vi.useRealTimers();
+  });
+
+  it('stats: uses updated last-seen timestamp after popup dwell reset', async () => {
+    vi.useFakeTimers();
+    const timestamps = [0, 1_700_000_000_000];
+    let statsCalls = 0;
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(timestamps[1]);
+
+    setNativeMessageHandlerForTests(async (msg) => {
+      if (msg.action === 'stats') {
+        const expectedSince = timestamps[Math.min(statsCalls, timestamps.length - 1)];
+        expect(msg.sinceClosedAt).toBe(expectedSince);
+        statsCalls += 1;
+        return { ok: true, totalArchived: 12, unseenArchived: 4 };
+      }
+      return { ok: true };
+    });
+
+    await onMessageHandler({ action: 'stats' });
+    await onMessageHandler({ action: 'popupOpened' });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+    });
+
+    await onMessageHandler({ action: 'stats' });
+
+    expect(statsCalls).toBe(2);
+
+    nowSpy.mockRestore();
+    vi.useRealTimers();
   });
 
   it('export: forwards action', async () => {
+    const messages: any[] = [];
     setNativeMessageHandlerForTests(async (msg) => {
-      expect(msg.action).toBe('export');
+      messages.push(msg);
       return { ok: true, tabs: [], count: 0 };
     });
 
-    const result = await onMessageHandler({ action: 'export' });
+    const result = await onMessageHandler({
+      action: 'export',
+      includeRestored: true,
+      chunkSize: 250,
+      offset: 500,
+    });
 
     expect(result.ok).toBe(true);
+    expect(messages[0]).toMatchObject({
+      action: 'export',
+      includeRestored: true,
+      chunkSize: 250,
+      offset: 500,
+    });
+  });
+
+  it('clearAll: forwards clear action and resets badge to zero', async () => {
+    setNativeMessageHandlerForTests(async (msg) => {
+      if (msg.action === 'stats') {
+        return { ok: true, totalArchived: 12, unseenArchived: 5 };
+      }
+      if (msg.action === 'clear') {
+        expect(msg.includeRestored).toBe(true);
+        return { ok: true, deleted: 12 };
+      }
+      return { ok: false, error: `unexpected action: ${msg.action}` };
+    });
+
+    await onMessageHandler({ action: 'stats' });
+    const result = await onMessageHandler({ action: 'clearAll', includeRestored: true });
+
+    expect(result).toEqual({ ok: true, deleted: 12 });
+    expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '0' });
   });
 
   it('getSettings: returns current settings', async () => {

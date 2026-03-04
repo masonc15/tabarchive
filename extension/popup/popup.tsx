@@ -35,6 +35,13 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
 
   const { sendMessage, search, restore, getRecent, getSettings, updateSettings, connected, error } = useNativeMessagingHook();
 
+  React.useEffect(() => {
+    void Promise.resolve(browser.runtime.sendMessage({ action: 'popupOpened' })).catch(() => {});
+    return () => {
+      void Promise.resolve(browser.runtime.sendMessage({ action: 'popupClosed' })).catch(() => {});
+    };
+  }, []);
+
   const handleSearch = useCallback(async (query: string) => {
     setSearchQuery(query);
     searchQueryRef.current = query;

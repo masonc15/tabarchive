@@ -10,6 +10,8 @@ const BASE_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30000;
 const BADGE_BACKGROUND_COLOR = '#1b4d9b';
 const BADGE_MAX_DISPLAY_COUNT = 999;
+const BADGE_VIEW_DWELL_MS = 1500;
+const BADGE_LAST_SEEN_STORAGE_KEY = 'badgeLastSeenAt';
 
 const DEFAULT_SETTINGS: AppSettings = {
   archiveAfterMinutes: 720,
@@ -36,6 +38,9 @@ let reconnectAttempts = 0;
 let inactiveCheckInProgress = false;
 let archivedCount = 0;
 let badgeStyleInitialized = false;
+let badgeLastSeenAt = 0;
+let popupOpen = false;
+let popupViewDwellTimer: ReturnType<typeof setTimeout> | null = null;
 
 const mockState = IS_TEST ? createMockState() : null;
 
@@ -50,6 +55,10 @@ export function setNativeMessageHandlerForTests(handler: (message: Record<string
 }
 
 export function resetStateForTests() {
+  if (popupViewDwellTimer) {
+    clearTimeout(popupViewDwellTimer);
+    popupViewDwellTimer = null;
+  }
   settings = { ...DEFAULT_SETTINGS };
   port = null;
   tabLastActive = new Map();
@@ -59,6 +68,8 @@ export function resetStateForTests() {
   inactiveCheckInProgress = false;
   archivedCount = 0;
   badgeStyleInitialized = false;
+  badgeLastSeenAt = 0;
+  popupOpen = false;
   if (IS_TEST && mockState) {
     mockState.reset();
     nativeMessageHandler = mockState.handleMessage;
@@ -99,6 +110,14 @@ function normalizeArchivedCount(input: unknown): number {
   return Math.max(0, Math.floor(parsed));
 }
 
+function normalizeTimestamp(input: unknown): number {
+  const parsed = Number(input);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(parsed));
+}
+
 function formatBadgeText(count: number): string {
   if (count > BADGE_MAX_DISPLAY_COUNT) {
     return `${BADGE_MAX_DISPLAY_COUNT}+`;
@@ -128,15 +147,74 @@ async function adjustArchivedBadgeCount(delta: number) {
   await setArchivedBadgeCount(archivedCount + delta);
 }
 
+function getBadgeStatsRequestPayload() {
+  return {
+    action: 'stats',
+    sinceClosedAt: badgeLastSeenAt,
+  };
+}
+
+function getUnseenBadgeCountFromStatsResponse(response: Record<string, any>): number {
+  if (typeof response.unseenArchived === 'number') {
+    return normalizeArchivedCount(response.unseenArchived);
+  }
+  return normalizeArchivedCount(response.totalArchived);
+}
+
 async function syncArchivedBadgeCountFromNative() {
   try {
-    const response = await sendNativeMessage({ action: 'stats' });
+    const response = await sendNativeMessage(getBadgeStatsRequestPayload());
     if (response?.ok) {
-      await setArchivedBadgeCount(response.totalArchived);
+      await setArchivedBadgeCount(getUnseenBadgeCountFromStatsResponse(response));
     }
   } catch (e) {
     console.error('Failed to sync archived count badge:', e);
   }
+}
+
+async function loadBadgeLastSeenAt() {
+  try {
+    const stored = await browser.storage.local.get({ [BADGE_LAST_SEEN_STORAGE_KEY]: 0 });
+    badgeLastSeenAt = normalizeTimestamp(stored[BADGE_LAST_SEEN_STORAGE_KEY]);
+  } catch (e) {
+    console.error('Failed to load badge last-seen timestamp:', e);
+  }
+}
+
+async function markBadgeSeen() {
+  const seenAt = Date.now();
+  badgeLastSeenAt = seenAt;
+  try {
+    await browser.storage.local.set({ [BADGE_LAST_SEEN_STORAGE_KEY]: seenAt });
+  } catch (e) {
+    console.error('Failed to persist badge last-seen timestamp:', e);
+  }
+  await setArchivedBadgeCount(0);
+}
+
+function clearPopupDwellTimer() {
+  if (!popupViewDwellTimer) {
+    return;
+  }
+  clearTimeout(popupViewDwellTimer);
+  popupViewDwellTimer = null;
+}
+
+function handlePopupOpened() {
+  popupOpen = true;
+  clearPopupDwellTimer();
+  popupViewDwellTimer = setTimeout(() => {
+    popupViewDwellTimer = null;
+    if (!popupOpen) {
+      return;
+    }
+    void markBadgeSeen();
+  }, BADGE_VIEW_DWELL_MS);
+}
+
+function handlePopupClosed() {
+  popupOpen = false;
+  clearPopupDwellTimer();
 }
 
 async function loadSettings() {
@@ -374,11 +452,7 @@ async function handleMessage(message: Record<string, any>) {
           id: message.id,
         });
         if (response?.ok) {
-          const restoredCount =
-            typeof response.restored === 'number'
-              ? normalizeArchivedCount(response.restored)
-              : 1;
-          await adjustArchivedBadgeCount(-restoredCount);
+          await syncArchivedBadgeCountFromNative();
         }
         return response;
       } catch (e) {
@@ -391,25 +465,45 @@ async function handleMessage(message: Record<string, any>) {
         id: message.id,
       });
       if (response?.ok) {
-        const deletedCount =
-          typeof response.deleted === 'number'
-            ? normalizeArchivedCount(response.deleted)
-            : 1;
-        await adjustArchivedBadgeCount(-deletedCount);
+        await syncArchivedBadgeCountFromNative();
       }
       return response;
     }
 
     case 'stats': {
-      const response = await sendNativeMessage({ action: 'stats' });
+      const response = await sendNativeMessage(getBadgeStatsRequestPayload());
       if (response?.ok) {
-        await setArchivedBadgeCount(response.totalArchived);
+        await setArchivedBadgeCount(getUnseenBadgeCountFromStatsResponse(response));
       }
       return response;
     }
 
+    case 'popupOpened':
+      handlePopupOpened();
+      return { ok: true };
+
+    case 'popupClosed':
+      handlePopupClosed();
+      return { ok: true };
+
     case 'export':
-      return sendNativeMessage({ action: 'export' });
+      return sendNativeMessage({
+        action: 'export',
+        includeRestored: message.includeRestored,
+        chunkSize: message.chunkSize,
+        offset: message.offset,
+      });
+
+    case 'clearAll': {
+      const response = await sendNativeMessage({
+        action: 'clear',
+        includeRestored: message.includeRestored,
+      });
+      if (response?.ok) {
+        await setArchivedBadgeCount(0);
+      }
+      return response;
+    }
 
     case 'getSettings':
       return { ok: true, settings };
@@ -435,6 +529,7 @@ async function handleMessage(message: Record<string, any>) {
 
 async function init() {
   await loadSettings();
+  await loadBadgeLastSeenAt();
 
   const tabs = (await browser.tabs.query({})) as browser.tabs.Tab[];
   const now = Date.now();
@@ -548,9 +643,18 @@ function createMockState() {
         return { ok: true, deleted: before - tabs.length };
       }
 
+      case 'clear': {
+        const includeRestored = message.includeRestored !== false;
+        const before = tabs.length;
+        tabs = includeRestored ? [] : tabs.filter((t) => t.restoredAt);
+        return { ok: true, deleted: before - tabs.length };
+      }
+
       case 'stats': {
         const active = listActive();
         const closedTimes = active.map((t) => t.closedAt);
+        const sinceClosedAt = normalizeTimestamp(message.sinceClosedAt);
+        const unseenArchived = active.filter((tab) => tab.closedAt > sinceClosedAt).length;
         return {
           ok: true,
           totalArchived: active.length,
@@ -560,6 +664,7 @@ function createMockState() {
           newestClosedAt: closedTimes.length ? Math.max(...closedTimes) : null,
           dbPath: 'mock',
           dbSizeBytes: 0,
+          unseenArchived,
         };
       }
 

@@ -367,6 +367,36 @@ class TestHandleDelete:
 
 
 # ---------------------------------------------------------------------------
+# handle_clear
+# ---------------------------------------------------------------------------
+
+
+class TestHandleClear:
+    def test_clear_all_rows(self, conn):
+        _insert_tab(conn, url="https://a.com", closed_at=1000)
+        _insert_tab(conn, url="https://b.com", closed_at=2000, restored_at=3000)
+
+        result = module.handle_clear(conn, {})
+        assert result == {"ok": True, "deleted": 2}
+        assert conn.execute("SELECT COUNT(*) FROM tabs").fetchone()[0] == 0
+
+    def test_clear_only_unrestored_rows(self, conn):
+        _insert_tab(conn, url="https://active.com", closed_at=1000)
+        _insert_tab(conn, url="https://restored.com", closed_at=2000, restored_at=3000)
+
+        result = module.handle_clear(conn, {"includeRestored": False})
+        assert result == {"ok": True, "deleted": 1}
+        assert conn.execute("SELECT COUNT(*) FROM tabs").fetchone()[0] == 1
+
+    def test_clear_updates_fts_index(self, conn):
+        _insert_tab(conn, url="https://example.com", title="Clear Me")
+        module.handle_clear(conn, {})
+
+        result = module.handle_search(conn, {"query": "Clear"})
+        assert result["count"] == 0
+
+
+# ---------------------------------------------------------------------------
 # handle_stats
 # ---------------------------------------------------------------------------
 
@@ -397,6 +427,22 @@ class TestHandleStats:
         result = module.handle_stats(conn, {})
         assert "dbPath" in result
         assert "dbSizeBytes" in result
+
+    def test_stats_with_since_closed_at_returns_unseen_archived(self, conn):
+        _insert_tab(conn, url="https://old.com", closed_at=1000)
+        _insert_tab(conn, url="https://new-active.com", closed_at=3000)
+        _insert_tab(conn, url="https://new-restored.com", closed_at=4000, restored_at=5000)
+
+        result = module.handle_stats(conn, {"sinceClosedAt": 2000})
+        assert result["ok"] is True
+        assert result["unseenArchived"] == 1
+
+    def test_stats_with_invalid_since_closed_at_ignores_unseen_count(self, conn):
+        _insert_tab(conn, url="https://example.com", closed_at=1000)
+
+        result = module.handle_stats(conn, {"sinceClosedAt": "bad-value"})
+        assert result["ok"] is True
+        assert "unseenArchived" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -572,7 +618,7 @@ class TestHandlePing:
 
 class TestDispatch:
     def test_all_actions_registered(self):
-        expected = {"archive", "search", "recent", "restore", "delete", "stats", "export", "import", "vacuum", "ping"}
+        expected = {"archive", "search", "recent", "restore", "delete", "clear", "stats", "export", "import", "vacuum", "ping"}
         assert set(module.HANDLERS.keys()) == expected
 
     def test_unknown_action_returns_error(self, conn):
