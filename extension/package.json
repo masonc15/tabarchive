@@ -1,6 +1,6 @@
 {
   "name": "tabarchive-extension",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Arc-style tab archiving extension with SQLite backend",
   "private": true,
   "scripts": {
