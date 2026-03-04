@@ -3,11 +3,10 @@
 Tab archiver for Firefox, Chrome, and Chromium. Extension plus native host.
 
 ## Dev
-Run `npm --prefix extension run dev` for dev build. Run
-`npm --prefix extension run build` for Firefox prod build. Run
-`npm --prefix extension run build:chromium` for Chrome/Chromium prod build. Run
-`npm --prefix extension test` plus `python3 -m pytest native/tests -q` for
-tests.
+All commands run from `extension/`. Build with `npm run dev` (development),
+`npm run build` (Firefox production), or `npm run build:chromium`
+(Chrome/Chromium production). Test with `npm test` and
+`python3 -m pytest native/tests -q`.
 
 ## Local Install
 For Firefox, run `native/install.sh --browser firefox`, then load
@@ -18,7 +17,7 @@ ID, then run `native/install.sh --browser chrome --extension-id <id>`. Use
 `--browser chromium` or `--browser chrome-for-testing` for those channels.
 
 ## Layout
-`extension/` contains add-on code. `native/` contains host code.
+`extension/` holds the add-on. `native/` holds the host.
 
 ## Data
-Archive DB lives at `~/.tabarchive/`. Upgrading extension keeps DB.
+The archive database lives at `~/.tabarchive/`. Upgrading the extension preserves it.
