@@ -1,10 +1,11 @@
 {
   "name": "tabarchive-extension",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Arc-style tab archiving extension with SQLite backend",
   "private": true,
   "scripts": {
     "build": "webpack --mode production",
+    "build:chromium": "TARGET=chromium webpack --mode production",
     "build:test": "TABARCHIVE_TEST=1 TARGET=chromium webpack --mode development",
     "watch": "webpack --mode development --watch",
     "dev": "webpack --mode development",
