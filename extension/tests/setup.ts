@@ -5,6 +5,7 @@ const browserMock = {
   runtime: {
     sendMessage: vi.fn(),
     onMessage: { addListener: vi.fn() },
+    onStartup: { addListener: vi.fn() },
     connectNative: vi.fn(),
     lastError: null as null | { message?: string },
     getManifest: vi.fn(() => ({ name: 'Tab Archive' })),
