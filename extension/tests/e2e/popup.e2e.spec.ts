@@ -205,10 +205,12 @@ test.describe('Tab Archive extension (real native host)', () => {
       ]);
 
       const page = await openPopupPage(harness.context, harness.extensionId);
+      await page.getByRole('button', { name: 'Pause archiving' }).click();
+      await expect(page.getByRole('button', { name: 'Resume archiving' })).toBeVisible();
       await page.getByRole('button', { name: 'Settings' }).click();
 
       await page.getByLabel('Archive after').selectOption('1440');
-      await page.getByRole('switch', { name: 'Pause archiving' }).click();
+      await expect(page.getByRole('switch', { name: 'Pause archiving' })).toHaveCount(0);
 
       const settingsResponse = await sendRuntimeMessage<Record<string, any>>(page, { action: 'getSettings' });
       expect(settingsResponse?.ok).toBe(true);

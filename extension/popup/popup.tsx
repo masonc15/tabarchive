@@ -10,12 +10,50 @@ import { ArchivedTab, AppSettings } from './types';
 export type { ArchivedTab, AppSettings };
 
 const PAGE_SIZE = 100;
+const DEFAULT_SETTINGS: AppSettings = {
+  archiveAfterMinutes: 720,
+  paused: false,
+  minTabs: 20,
+};
 
 type View = 'search' | 'settings';
 
 type AppProps = {
   useNativeMessagingHook?: typeof useNativeMessaging;
 };
+
+function PlaybackToggleIcon({ paused }: { paused: boolean }) {
+  if (paused) {
+    return (
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path d="M8 6.5v11l9-5.5-9-5.5Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 5v14" />
+      <path d="M15 5v14" />
+    </svg>
+  );
+}
 
 export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = {}) {
   const [view, setView] = useState<View>('search');
@@ -27,11 +65,8 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   const offsetRef = useRef(0);
   const searchQueryRef = useRef('');
   const loadingMoreRef = useRef(false);
-  const [settings, setSettings] = useState<AppSettings>({
-    archiveAfterMinutes: 720,
-    paused: false,
-    minTabs: 20,
-  });
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const { sendMessage, search, restore, getRecent, getSettings, updateSettings, connected, error } = useNativeMessagingHook();
 
@@ -104,10 +139,10 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   }, [updateSettings]);
 
   React.useEffect(() => {
-    if (connected) {
-      getSettings().then(setSettings);
-    }
-  }, [connected, getSettings]);
+    getSettings()
+      .then(setSettings)
+      .finally(() => setSettingsLoaded(true));
+  }, [getSettings]);
 
   React.useEffect(() => {
     if (connected) {
@@ -122,7 +157,29 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.title}>Tab Archive</h1>
+        <div style={styles.headerLeft}>
+          <h1 style={styles.title}>Tab Archive</h1>
+          <button
+            type="button"
+            onClick={() => {
+              if (!settingsLoaded) {
+                return;
+              }
+              void handleSettingsChange({ ...settings, paused: !settings.paused });
+            }}
+            style={{
+              ...styles.pauseButton,
+              ...(settings.paused ? styles.pauseButtonPaused : styles.pauseButtonActive),
+              ...(!settingsLoaded ? styles.pauseButtonDisabled : {}),
+            }}
+            aria-label={settings.paused ? 'Resume archiving' : 'Pause archiving'}
+            aria-pressed={settings.paused}
+            title={settings.paused ? 'Archiving paused' : 'Archiving active'}
+            disabled={!settingsLoaded}
+          >
+            <PlaybackToggleIcon paused={settings.paused} />
+          </button>
+        </div>
         <nav style={styles.nav}>
           <button
             style={{
@@ -200,14 +257,46 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
   title: {
     fontSize: '16px',
     fontWeight: 600,
     color: '#e4e4e7',
+    margin: 0,
   },
   nav: {
     display: 'flex',
     gap: '8px',
+  },
+  pauseButton: {
+    width: '32px',
+    height: '32px',
+    border: '1px solid transparent',
+    borderRadius: '10px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    padding: 0,
+  },
+  pauseButtonActive: {
+    backgroundColor: '#3b3b5c',
+    color: '#e4e4e7',
+    boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.04)',
+  },
+  pauseButtonPaused: {
+    backgroundColor: '#4a2230',
+    color: '#fca5a5',
+    boxShadow: 'inset 0 0 0 1px rgba(252,165,165,0.16)',
+  },
+  pauseButtonDisabled: {
+    opacity: 0.55,
+    cursor: 'wait',
   },
   navButton: {
     padding: '6px 12px',

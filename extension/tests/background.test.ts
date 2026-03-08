@@ -696,6 +696,7 @@ describe('handleMessage routing', () => {
       paused: true,
       minTabs: 5,
     });
+    expect(browserMock.action.setBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#8b3a3a' });
   });
 
   it('updateSettings: normalizes bad values', async () => {
@@ -754,10 +755,13 @@ describe('storage change listener', () => {
     setSettingsForTests({ archiveAfterMinutes: 60, paused: false, minTabs: 5 });
 
     // Simulate storage change
-    listener(
-      { paused: { newValue: true }, archiveAfterMinutes: { newValue: 30 } },
-      'sync',
-    );
+    await act(async () => {
+      listener(
+        { paused: { newValue: true }, archiveAfterMinutes: { newValue: 30 } },
+        'sync',
+      );
+      await Promise.resolve();
+    });
 
     // Verify by reading back via getSettings
     const result = await onMessageHandler({ action: 'getSettings' });
@@ -766,6 +770,7 @@ describe('storage change listener', () => {
       paused: true,
       minTabs: 5,
     });
+    expect(browserMock.action.setBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#8b3a3a' });
   });
 
   it('ignores changes from non-sync area', async () => {

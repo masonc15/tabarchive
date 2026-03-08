@@ -28,10 +28,9 @@ function renderSettings(overrides: {
 }
 
 describe('Settings', () => {
-  it('renders pause toggle with correct initial state', () => {
+  it('does not render a pause toggle in the settings panel', () => {
     renderSettings();
-    const toggle = screen.getByRole('switch', { name: 'Pause archiving' });
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByRole('switch', { name: 'Pause archiving' })).not.toBeInTheDocument();
   });
 
   it('renders archive-after select with correct value', () => {
@@ -44,17 +43,6 @@ describe('Settings', () => {
     renderSettings();
     const select = screen.getByRole('combobox', { name: 'Minimum tabs' });
     expect(select).toHaveValue('20');
-  });
-
-  it('toggles paused state on click', async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    renderSettings({ onChange });
-
-    const toggle = screen.getByRole('switch', { name: 'Pause archiving' });
-    await user.click(toggle);
-
-    expect(onChange).toHaveBeenCalledWith({ ...defaultSettings, paused: true });
   });
 
   it('dispatches archiveAfterMinutes change', async () => {

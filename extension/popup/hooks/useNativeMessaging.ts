@@ -40,22 +40,36 @@ export function useNativeMessaging(): UseNativeMessagingResult {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sendMessage = useCallback(async (message: Record<string, unknown>): Promise<NativeResponse> => {
+  const rawSendMessage = useCallback(async (message: Record<string, unknown>): Promise<NativeResponse> => {
     try {
       const rawResponse = await browser.runtime.sendMessage(message);
-      const response = rawResponse as NativeResponse | undefined;
-      if (response?.error) {
-        setError(response.error);
-      } else {
-        setError(null);
-      }
-      return response || { ok: false, error: 'No response' };
+      return (rawResponse as NativeResponse | undefined) || { ok: false, error: 'No response' };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(errorMessage);
       return { ok: false, error: errorMessage };
     }
   }, []);
+
+  const sendMessage = useCallback(async (message: Record<string, unknown>): Promise<NativeResponse> => {
+    const response = await rawSendMessage(message);
+    if (response?.error) {
+      setError(response.error);
+    } else {
+      setError(null);
+    }
+    return response;
+  }, [rawSendMessage]);
+
+  const sendMessageSilently = useCallback(async (message: Record<string, unknown>): Promise<NativeResponse> => {
+    try {
+      return await rawSendMessage(message);
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      };
+    }
+  }, [rawSendMessage]);
 
   const search = useCallback(async (query: string, limit = 100, offset = 0): Promise<PaginatedResult> => {
     const response = await sendMessage({ action: 'search', query, limit, offset });
@@ -95,22 +109,22 @@ export function useNativeMessaging(): UseNativeMessagingResult {
   }, [sendMessage]);
 
   const getSettings = useCallback(async (): Promise<AppSettings> => {
-    const response = await sendMessage({ action: 'getSettings' });
+    const response = await sendMessageSilently({ action: 'getSettings' });
     return response.settings || {
       archiveAfterMinutes: 720,
       paused: false,
       minTabs: 20,
     };
-  }, [sendMessage]);
+  }, [sendMessageSilently]);
 
   const updateSettings = useCallback(async (settings: Partial<AppSettings>): Promise<AppSettings> => {
-    const response = await sendMessage({ action: 'updateSettings', settings });
+    const response = await sendMessageSilently({ action: 'updateSettings', settings });
     return response.settings || {
       archiveAfterMinutes: 720,
       paused: false,
       minTabs: 20,
     };
-  }, [sendMessage]);
+  }, [sendMessageSilently]);
 
   const archiveCurrentTab = useCallback(async (): Promise<boolean> => {
     const response = await sendMessage({ action: 'archiveTab' });

@@ -67,10 +67,6 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
     onChange({ ...settings, minTabs: parseInt(e.target.value, 10) });
   };
 
-  const handlePausedChange = () => {
-    onChange({ ...settings, paused: !settings.paused });
-  };
-
   const handleResetSettings = () => {
     onChange(DEFAULT_SETTINGS);
     setActionMessage('Settings reset to defaults.');
@@ -183,32 +179,6 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
   return (
     <div style={styles.container}>
       <div style={styles.section}>
-        <div style={styles.settingRow}>
-          <div style={styles.settingInfo}>
-            <div style={styles.settingLabel}>Pause archiving</div>
-            <div style={styles.settingDescription}>
-              Temporarily stop auto-archiving tabs
-            </div>
-          </div>
-          <button
-            style={{
-              ...styles.toggle,
-              backgroundColor: settings.paused ? '#7c7cff' : '#3b3b5c',
-            }}
-            onClick={handlePausedChange}
-            role="switch"
-            aria-checked={settings.paused}
-            aria-label="Pause archiving"
-          >
-            <div
-              style={{
-                ...styles.toggleKnob,
-                transform: settings.paused ? 'translateX(18px)' : 'translateX(2px)',
-              }}
-            />
-          </button>
-        </div>
-
         <div style={styles.settingRow}>
           <div style={styles.settingInfo}>
             <div style={styles.settingLabel}>Archive after</div>
@@ -343,26 +313,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '12px',
     color: '#71717a',
     lineHeight: 1.4,
-  },
-  toggle: {
-    width: '44px',
-    height: '24px',
-    borderRadius: '12px',
-    border: 'none',
-    cursor: 'pointer',
-    position: 'relative',
-    transition: 'background-color 0.2s ease',
-    flexShrink: 0,
-  },
-  toggleKnob: {
-    width: '20px',
-    height: '20px',
-    borderRadius: '10px',
-    backgroundColor: '#ffffff',
-    position: 'absolute',
-    top: '2px',
-    transition: 'transform 0.2s ease',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
   },
   select: {
     padding: '8px 12px',

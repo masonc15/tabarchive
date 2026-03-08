@@ -117,7 +117,7 @@ describe('Popup App', () => {
     expect(screen.getByText('Example')).toBeInTheDocument();
   });
 
-  it('loads settings on mount when connected', async () => {
+  it('loads settings on mount regardless of native host connectivity', async () => {
     const { mocks, hook } = createMocks();
 
     await act(async () => {
@@ -128,6 +128,45 @@ describe('Popup App', () => {
     });
 
     expect(mocks.getSettings).toHaveBeenCalled();
+  });
+
+  it('shows paused state in the header toggle after settings load', async () => {
+    const { hook } = createMocks({
+      getSettings: vi.fn().mockResolvedValue({ ...defaultSettings, paused: true }),
+    });
+
+    await act(async () => {
+      render(<App useNativeMessagingHook={hook} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('button', { name: 'Resume archiving' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('toggles pause state from the header control', async () => {
+    const user = userEvent.setup();
+    const { mocks, hook } = createMocks();
+
+    await act(async () => {
+      render(<App useNativeMessagingHook={hook} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const pauseButton = screen.getByRole('button', { name: 'Pause archiving' });
+    expect(pauseButton).toBeEnabled();
+
+    await user.click(pauseButton);
+
+    expect(mocks.updateSettings).toHaveBeenCalledWith({
+      archiveAfterMinutes: 720,
+      paused: true,
+      minTabs: 20,
+    });
+    expect(screen.getByRole('button', { name: 'Resume archiving' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('removes tab from list on successful restore', async () => {
@@ -258,7 +297,7 @@ describe('Popup App', () => {
     expect(mocks.getRecent).toHaveBeenCalled();
   });
 
-  it('does not fetch tabs or settings when disconnected', async () => {
+  it('does not fetch tabs when disconnected but still hydrates settings', async () => {
     const { mocks, hook } = createMocks({ connected: false });
 
     await act(async () => {
@@ -269,7 +308,7 @@ describe('Popup App', () => {
     });
 
     expect(mocks.getRecent).not.toHaveBeenCalled();
-    expect(mocks.getSettings).not.toHaveBeenCalled();
+    expect(mocks.getSettings).toHaveBeenCalled();
   });
 
   it('renders header with title', async () => {

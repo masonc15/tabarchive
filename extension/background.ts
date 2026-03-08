@@ -8,7 +8,8 @@ const NATIVE_REQUEST_TIMEOUT_MS = 30000;
 const INACTIVE_CHECK_INTERVAL_MS = 60000;
 const BASE_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30000;
-const BADGE_BACKGROUND_COLOR = '#1b4d9b';
+const BADGE_BACKGROUND_COLOR_ACTIVE = '#1b4d9b';
+const BADGE_BACKGROUND_COLOR_PAUSED = '#8b3a3a';
 const BADGE_MAX_DISPLAY_COUNT = 999;
 const BADGE_VIEW_DWELL_MS = 1500;
 const BADGE_LAST_SEEN_STORAGE_KEY = 'badgeLastSeenAt';
@@ -37,7 +38,7 @@ let requestId = 0;
 let reconnectAttempts = 0;
 let inactiveCheckInProgress = false;
 let archivedCount = 0;
-let badgeStyleInitialized = false;
+let badgeBackgroundColor: string | null = null;
 let badgeLastSeenAt = 0;
 let popupOpen = false;
 let popupViewDwellTimer: ReturnType<typeof setTimeout> | null = null;
@@ -67,7 +68,7 @@ export function resetStateForTests() {
   reconnectAttempts = 0;
   inactiveCheckInProgress = false;
   archivedCount = 0;
-  badgeStyleInitialized = false;
+  badgeBackgroundColor = null;
   badgeLastSeenAt = 0;
   popupOpen = false;
   if (IS_TEST && mockState) {
@@ -126,11 +127,14 @@ function formatBadgeText(count: number): string {
 }
 
 async function ensureBadgeStyle() {
-  if (badgeStyleInitialized) {
+  const nextBadgeBackgroundColor = settings.paused
+    ? BADGE_BACKGROUND_COLOR_PAUSED
+    : BADGE_BACKGROUND_COLOR_ACTIVE;
+  if (badgeBackgroundColor === nextBadgeBackgroundColor) {
     return;
   }
-  await browser.action.setBadgeBackgroundColor({ color: BADGE_BACKGROUND_COLOR });
-  badgeStyleInitialized = true;
+  await browser.action.setBadgeBackgroundColor({ color: nextBadgeBackgroundColor });
+  badgeBackgroundColor = nextBadgeBackgroundColor;
 }
 
 async function setArchivedBadgeCount(count: number) {
@@ -145,6 +149,15 @@ async function setArchivedBadgeCount(count: number) {
 
 async function adjustArchivedBadgeCount(delta: number) {
   await setArchivedBadgeCount(archivedCount + delta);
+}
+
+async function refreshBadgeAppearance() {
+  try {
+    await ensureBadgeStyle();
+    await browser.action.setBadgeText({ text: formatBadgeText(archivedCount) });
+  } catch (e) {
+    console.error('Failed to refresh extension badge appearance:', e);
+  }
 }
 
 function getBadgeStatsRequestPayload() {
@@ -511,6 +524,7 @@ async function handleMessage(message: Record<string, any>) {
     case 'updateSettings':
       settings = normalizeSettings({ ...settings, ...(message.settings || {}) });
       await browser.storage.sync.set(settings);
+      await refreshBadgeAppearance();
       return { ok: true, settings };
 
     case 'archiveTab': {
@@ -560,6 +574,7 @@ browser.storage.onChanged.addListener((changes: Record<string, { newValue?: unkn
     }
     if (Object.keys(updated).length > 0) {
       settings = normalizeSettings({ ...settings, ...updated });
+      void refreshBadgeAppearance();
     }
   }
 });
