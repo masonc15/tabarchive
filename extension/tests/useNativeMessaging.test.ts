@@ -74,27 +74,6 @@ describe('useNativeMessaging', () => {
     expect(result.current.error).toBe('Connection refused');
   });
 
-  it('getSettings does not clear an existing native-host error', async () => {
-    const browserMock = getBrowserMock();
-    browserMock.runtime.sendMessage
-      .mockResolvedValueOnce({ ok: false, error: 'Host not found' })
-      .mockResolvedValueOnce({ ok: true, settings: { archiveAfterMinutes: 720, paused: true, minTabs: 20 } });
-
-    const { result } = renderHook(() => useNativeMessaging());
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(result.current.error).toBe('Host not found');
-
-    await act(async () => {
-      await result.current.getSettings();
-    });
-
-    expect(result.current.error).toBe('Host not found');
-  });
-
   it('search returns tabs from response', async () => {
     const browserMock = getBrowserMock();
     const mockTabs = [
@@ -241,6 +220,27 @@ describe('useNativeMessaging', () => {
       paused: false,
       minTabs: 20,
     });
+  });
+
+  it('getSettings does not clear an existing native-host error', async () => {
+    const browserMock = getBrowserMock();
+    browserMock.runtime.sendMessage
+      .mockResolvedValueOnce({ ok: false, error: 'Host not found' })
+      .mockResolvedValueOnce({ ok: true, settings: { archiveAfterMinutes: 720, paused: true, minTabs: 20 } });
+
+    const { result } = renderHook(() => useNativeMessaging());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.error).toBe('Host not found');
+
+    await act(async () => {
+      await result.current.getSettings();
+    });
+
+    expect(result.current.error).toBe('Host not found');
   });
 
   it('updateSettings sends partial settings', async () => {

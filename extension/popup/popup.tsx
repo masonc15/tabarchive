@@ -154,6 +154,10 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
     }
   }, [connected, getRecent]);
 
+  const pauseButtonLabel = settings.paused ? 'Resume archiving' : 'Pause archiving';
+  const pauseButtonTitle = settings.paused ? 'Archiving paused' : 'Archiving active';
+  const pauseButtonDisabled = !settingsLoaded;
+
   return (
     <div style={styles.container}>
       <header style={styles.header}>
@@ -162,7 +166,7 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
           <button
             type="button"
             onClick={() => {
-              if (!settingsLoaded) {
+              if (pauseButtonDisabled) {
                 return;
               }
               void handleSettingsChange({ ...settings, paused: !settings.paused });
@@ -170,12 +174,12 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
             style={{
               ...styles.pauseButton,
               ...(settings.paused ? styles.pauseButtonPaused : styles.pauseButtonActive),
-              ...(!settingsLoaded ? styles.pauseButtonDisabled : {}),
+              ...(pauseButtonDisabled ? styles.pauseButtonDisabled : {}),
             }}
-            aria-label={settings.paused ? 'Resume archiving' : 'Pause archiving'}
+            aria-label={pauseButtonLabel}
             aria-pressed={settings.paused}
-            title={settings.paused ? 'Archiving paused' : 'Archiving active'}
-            disabled={!settingsLoaded}
+            title={pauseButtonTitle}
+            disabled={pauseButtonDisabled}
           >
             <PlaybackToggleIcon paused={settings.paused} />
           </button>
