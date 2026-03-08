@@ -81,7 +81,23 @@ describe('Settings', () => {
       expect(screen.getByText('150')).toBeInTheDocument();
     });
     expect(screen.getByText('30')).toBeInTheDocument();
-    expect(screen.getByText('2.0 KB')).toBeInTheDocument();
+    expect(screen.getByText('2 KB')).toBeInTheDocument();
+  });
+
+  it('formats larger database sizes in MB to keep the stats card compact', async () => {
+    const sendMessage = vi.fn().mockResolvedValue({
+      ok: true,
+      totalArchived: 1259,
+      totalRestored: 39,
+      dbSizeBytes: 16376 * 1024,
+    });
+
+    renderSettings({ sendMessage });
+
+    await waitFor(() => {
+      expect(screen.getByText('1,259')).toBeInTheDocument();
+    });
+    expect(screen.getByText('16 MB')).toBeInTheDocument();
   });
 
   it('does not display stats when sendMessage returns not ok', async () => {

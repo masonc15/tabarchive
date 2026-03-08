@@ -35,6 +35,32 @@ const minTabsOptions = [
   { value: 50, label: '50 tabs' },
 ];
 
+function formatDbSize(bytes?: number) {
+  if (!bytes || bytes <= 0) {
+    return 'Unknown';
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  if (unitIndex === 0) {
+    return `${Math.round(value)} ${units[unitIndex]}`;
+  }
+
+  const formattedValue = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: value < 10 ? 1 : 0,
+    minimumFractionDigits: 0,
+  }).format(value);
+
+  return `${formattedValue} ${units[unitIndex]}`;
+}
+
 export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -47,11 +73,10 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
       return;
     }
 
-    const dbSizeKB = response.dbSizeBytes ? (response.dbSizeBytes / 1024).toFixed(1) + ' KB' : 'Unknown';
     setStats({
       totalArchived: response.totalArchived ?? 0,
       totalRestored: response.totalRestored ?? 0,
-      dbSize: dbSizeKB,
+      dbSize: formatDbSize(response.dbSizeBytes),
     });
   }, [sendMessage]);
 
@@ -353,6 +378,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     color: '#e4e4e7',
     marginBottom: '4px',
+    lineHeight: 1.1,
+    whiteSpace: 'nowrap',
   },
   statLabel: {
     fontSize: '11px',
