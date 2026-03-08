@@ -608,7 +608,7 @@ class TestHandleVacuum:
 class TestHandlePing:
     def test_ping(self, conn):
         result = module.handle_ping(conn, {})
-        assert result == {"ok": True, "version": "1.0.3"}
+        assert result == {"ok": True, "version": "1.0.4"}
 
 
 # ---------------------------------------------------------------------------
