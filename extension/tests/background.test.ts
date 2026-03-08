@@ -2,6 +2,7 @@ import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkInactiveTabs,
+  formatBadgeText,
   normalizeSettings,
   onMessageHandler,
   resetStateForTests,
@@ -15,6 +16,21 @@ const browserMock = (globalThis as any).__browserMock__;
 beforeEach(() => {
   resetStateForTests();
   vi.clearAllMocks();
+});
+
+describe('formatBadgeText', () => {
+  it('shows full counts up to 9,999', () => {
+    expect(formatBadgeText(9999)).toBe('9999');
+  });
+
+  it('switches to compact k+ formatting above 9,999', () => {
+    expect(formatBadgeText(10000)).toBe('10k+');
+    expect(formatBadgeText(12750)).toBe('12k+');
+  });
+
+  it('caps compact badge text at 99k+', () => {
+    expect(formatBadgeText(999999)).toBe('99k+');
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -10,7 +10,8 @@ const BASE_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30000;
 const BADGE_BACKGROUND_COLOR_ACTIVE = '#1b4d9b';
 const BADGE_BACKGROUND_COLOR_PAUSED = '#8b3a3a';
-const BADGE_MAX_DISPLAY_COUNT = 999;
+const BADGE_MAX_DISPLAY_COUNT = 9999;
+const BADGE_COMPACT_MAX_DISPLAY_COUNT = 99;
 const BADGE_SESSION_ARCHIVED_COUNT_STORAGE_KEY = 'badgeSessionArchivedCount';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -109,9 +110,13 @@ function normalizeTimestamp(input: unknown): number {
   return Math.max(0, Math.floor(parsed));
 }
 
-function formatBadgeText(count: number): string {
+export function formatBadgeText(count: number): string {
   if (count > BADGE_MAX_DISPLAY_COUNT) {
-    return `${BADGE_MAX_DISPLAY_COUNT}+`;
+    const compactCount = Math.min(
+      BADGE_COMPACT_MAX_DISPLAY_COUNT,
+      Math.floor(count / 1000),
+    );
+    return `${compactCount}k+`;
   }
   return String(count);
 }
@@ -143,16 +148,16 @@ async function setArchivedBadgeCount(count: number) {
   }
 }
 
-async function adjustArchivedBadgeCount(delta: number) {
-  await setArchivedBadgeCount(archivedCount + delta);
-}
-
 async function refreshBadgeAppearance() {
   try {
     await applyBadgeAppearance();
   } catch (e) {
     console.error('Failed to refresh extension badge appearance:', e);
   }
+}
+
+async function adjustArchivedBadgeCount(delta: number) {
+  await setArchivedBadgeCount(archivedCount + delta);
 }
 
 async function loadSessionArchivedCount() {
