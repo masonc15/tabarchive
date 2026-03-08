@@ -2,6 +2,11 @@
 
 Tab archiver for Firefox, Chrome, and Chromium. Extension plus native host.
 
+The popup gives you recent archived tabs, full-text search, and settings in
+one compact view.
+
+<img src="assets/readme/tabarchive-popup.png" alt="Tabarchive popup showing recent archived tabs, search, and settings." width="400">
+
 ## Dev
 All commands run from `extension/`. Build with `npm run dev` (development),
 `npm run build` (Firefox production), or `npm run build:chromium`
