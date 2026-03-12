@@ -174,13 +174,18 @@ async function resetSessionArchivedCount() {
   await setArchivedBadgeCount(0);
 }
 
-async function loadSettings() {
+async function readStoredSettings(): Promise<AppSettings> {
   try {
     const stored = await browser.storage.sync.get(DEFAULT_SETTINGS);
-    settings = normalizeSettings({ ...DEFAULT_SETTINGS, ...stored });
+    return normalizeSettings({ ...DEFAULT_SETTINGS, ...stored });
   } catch (e) {
     console.error('Failed to load settings:', e);
+    return { ...DEFAULT_SETTINGS };
   }
+}
+
+async function loadSettings() {
+  settings = await readStoredSettings();
 }
 
 function connectNative() {
@@ -375,7 +380,13 @@ export function onMessageHandler(message: Record<string, any>) {
 
 browser.runtime.onMessage.addListener(onMessageHandler);
 browser.runtime.onStartup.addListener(() => {
-  void resetSessionArchivedCount();
+  void (async () => {
+    settings = await readStoredSettings();
+    if (settings.paused) {
+      return;
+    }
+    await resetSessionArchivedCount();
+  })();
 });
 
 async function handleMessage(message: Record<string, any>) {

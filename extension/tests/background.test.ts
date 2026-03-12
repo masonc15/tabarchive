@@ -649,10 +649,15 @@ const storageListener = browserMock.storage.onChanged.addListener.mock.calls[0]?
   | undefined;
 
 describe('startup listener', () => {
-  it('resets the archived-this-session badge count on browser startup', async () => {
+  it('resets the archived-this-session badge count on browser startup when not paused', async () => {
     browserMock.tabs.query.mockResolvedValue([
       { id: 5, url: 'https://example.com', title: 'Example', active: true },
     ]);
+    browserMock.storage.sync.get.mockResolvedValueOnce({
+      archiveAfterMinutes: 60,
+      paused: false,
+      minTabs: 5,
+    });
 
     setNativeMessageHandlerForTests(async (msg) => {
       if (msg.action === 'archive') {
@@ -670,6 +675,34 @@ describe('startup listener', () => {
 
     expect(browserMock.storage.local.set).toHaveBeenCalledWith({ badgeSessionArchivedCount: 0 });
     expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '0' });
+  });
+
+  it('does not reset the archived-this-session badge count on browser startup when paused', async () => {
+    browserMock.tabs.query.mockResolvedValue([
+      { id: 5, url: 'https://example.com', title: 'Example', active: true },
+    ]);
+    browserMock.storage.sync.get.mockResolvedValueOnce({
+      archiveAfterMinutes: 60,
+      paused: true,
+      minTabs: 5,
+    });
+
+    setNativeMessageHandlerForTests(async (msg) => {
+      if (msg.action === 'archive') {
+        return { ok: true };
+      }
+      return { ok: false, error: `unexpected action: ${msg.action}` };
+    });
+
+    await onMessageHandler({ action: 'archiveTab' });
+
+    await act(async () => {
+      await startupListener?.();
+      await Promise.resolve();
+    });
+
+    expect(browserMock.storage.local.set).not.toHaveBeenCalledWith({ badgeSessionArchivedCount: 0 });
+    expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '1' });
   });
 });
 
