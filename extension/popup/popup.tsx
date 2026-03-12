@@ -6,6 +6,7 @@ import { TabList } from './components/TabList';
 import { Settings } from './components/Settings';
 import { useNativeMessaging } from './hooks/useNativeMessaging';
 import { ArchivedTab, AppSettings } from './types';
+import { getRestoreBlockReason } from '../runtime';
 
 export type { ArchivedTab, AppSettings };
 
@@ -122,6 +123,13 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
 
   const handleRestore = useCallback(async (tab: ArchivedTab): Promise<boolean> => {
     setActionError(null);
+
+    const restoreBlockReason = getRestoreBlockReason(tab.url);
+    if (restoreBlockReason) {
+      setActionError(`Restore failed: ${restoreBlockReason}`);
+      return false;
+    }
+
     try {
       await browser.tabs.create({ url: tab.url });
     } catch (err) {

@@ -16,6 +16,7 @@ const browserMock = (globalThis as any).__browserMock__;
 beforeEach(() => {
   resetStateForTests();
   vi.clearAllMocks();
+  browserMock.runtime.getManifest.mockReturnValue({ name: 'Tab Archive' });
 });
 
 describe('formatBadgeText', () => {
@@ -266,6 +267,41 @@ describe('checkInactiveTabs', () => {
     expect(browserMock.tabs.remove).toHaveBeenCalledWith(2);
   });
 
+  it('skips file: tabs during inactivity scans in Firefox', async () => {
+    browserMock.runtime.getManifest.mockReturnValue({
+      name: 'Tab Archive',
+      browser_specific_settings: { gecko: { id: 'tabarchive@masonc15.github.io' } },
+    });
+    setSettingsForTests({ archiveAfterMinutes: 1, paused: false, minTabs: 0 });
+
+    const now = Date.now();
+    const tabs = [
+      { id: 1, url: 'file:///tmp/example.html', title: 'Local File', active: false, pinned: false },
+      { id: 2, url: 'https://normal.com', title: 'Normal', active: false, pinned: false },
+    ];
+    browserMock.tabs.query.mockResolvedValue(tabs);
+
+    setTabLastActiveForTests(
+      new Map([
+        [1, now - 60 * 60 * 1000],
+        [2, now - 60 * 60 * 1000],
+      ]),
+    );
+
+    const archived: any[] = [];
+    setNativeMessageHandlerForTests(async (msg) => {
+      archived.push(msg);
+      return { ok: true };
+    });
+
+    await checkInactiveTabs();
+
+    expect(archived).toHaveLength(1);
+    expect(archived[0].url).toBe('https://normal.com');
+    expect(browserMock.tabs.remove).toHaveBeenCalledWith(2);
+    expect(browserMock.tabs.remove).not.toHaveBeenCalledWith(1);
+  });
+
   it('respects minTabs when deciding how many to archive', async () => {
     setSettingsForTests({ archiveAfterMinutes: 1, paused: false, minTabs: 2 });
 
@@ -379,6 +415,24 @@ describe('archiveTab', () => {
   it('skips moz-extension: URLs', async () => {
     browserMock.tabs.query.mockResolvedValue([
       { id: 1, url: 'moz-extension://abc/page.html', title: 'Ext', active: true },
+    ]);
+
+    const handler = vi.fn();
+    setNativeMessageHandlerForTests(handler);
+
+    await onMessageHandler({ action: 'archiveTab' });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(browserMock.tabs.remove).not.toHaveBeenCalled();
+  });
+
+  it('skips file: URLs in Firefox', async () => {
+    browserMock.runtime.getManifest.mockReturnValue({
+      name: 'Tab Archive',
+      browser_specific_settings: { gecko: { id: 'tabarchive@masonc15.github.io' } },
+    });
+    browserMock.tabs.query.mockResolvedValue([
+      { id: 1, url: 'file:///tmp/example.html', title: 'Local File', active: true },
     ]);
 
     const handler = vi.fn();

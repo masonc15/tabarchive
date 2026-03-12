@@ -1,5 +1,6 @@
 import browser from 'webextension-polyfill';
 import type { AppSettings } from './popup/types';
+import { canArchiveUrl } from './runtime';
 
 declare const __TABARCHIVE_TEST__: boolean | undefined;
 
@@ -296,9 +297,7 @@ function sendNativeMessage(message: Record<string, any>) {
 
 async function archiveTab(tab: browser.tabs.Tab) {
   if (
-    !tab.url ||
-    tab.url.startsWith('about:') ||
-    tab.url.startsWith('moz-extension:') ||
+    !canArchiveUrl(tab.url) ||
     isIncognitoTab(tab)
   ) {
     return;

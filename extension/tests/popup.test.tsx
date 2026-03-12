@@ -64,6 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   browserMock.tabs.create.mockResolvedValue(undefined);
   browserMock.runtime.sendMessage.mockResolvedValue(undefined);
+  browserMock.runtime.getManifest.mockReturnValue({ name: 'Tab Archive' });
 });
 
 describe('Popup App', () => {
@@ -141,6 +142,42 @@ describe('Popup App', () => {
     expect(screen.getByText('Restore failed: Blocked URL')).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it('shows a Firefox-specific error for local file tabs', async () => {
+    const browserMock = (globalThis as any).__browserMock__;
+    browserMock.runtime.getManifest.mockReturnValue({
+      name: 'Tab Archive',
+      browser_specific_settings: { gecko: { id: 'tabarchive@masonc15.github.io' } },
+    });
+    const localFileTab = {
+      id: 2,
+      url: 'file:///Users/colin/tmp/claude-sessions-playground.html',
+      title: 'Local File',
+      closedAt: Date.now() - 60000,
+      faviconUrl: null,
+    };
+    const { mocks, hook } = createMocks({
+      getRecent: vi.fn().mockResolvedValue({ tabs: [localFileTab], hasMore: false }),
+      restore: vi.fn().mockResolvedValue(true),
+    });
+
+    await act(async () => {
+      render(<App useNativeMessagingHook={hook} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Local File' }));
+    });
+
+    expect(browserMock.tabs.create).not.toHaveBeenCalled();
+    expect(mocks.restore).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Restore failed: Firefox cannot reopen local file tabs from an extension. Open the file directly from disk.')
+    ).toBeInTheDocument();
   });
 
   it('loads recent tabs on mount when connected', async () => {
