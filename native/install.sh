@@ -9,6 +9,7 @@ BIN_DIR="$DATA_DIR/bin"
 INSTALLED_HOST_PATH="$BIN_DIR/tabarchive-host.py"
 HOST_NAME="tabarchive"
 DEFAULT_FIREFOX_EXTENSION_ID="tabarchive@masonc15.github.io"
+LEGACY_FIREFOX_EXTENSION_ID="tabarchive@localhost"
 
 BROWSER="firefox"
 EXTENSION_ID="${TABARCHIVE_EXTENSION_ID:-}"
@@ -130,9 +131,21 @@ chromium_manifest_dir() {
 write_firefox_manifest() {
   local manifest_dir
   local manifest_file
+  local allowed_extensions_json
   manifest_dir="$(firefox_manifest_dir)"
   manifest_file="$manifest_dir/$HOST_NAME.json"
   mkdir -p "$manifest_dir"
+  allowed_extensions_json="$(python3 - <<'PY' "$DEFAULT_FIREFOX_EXTENSION_ID" "$LEGACY_FIREFOX_EXTENSION_ID" "$FIREFOX_EXTENSION_ID"
+import json
+import sys
+
+seen = []
+for value in sys.argv[1:]:
+    if value and value not in seen:
+        seen.append(value)
+print(json.dumps(seen))
+PY
+)"
 
   cat > "$manifest_file" <<EOF
 {
@@ -140,12 +153,20 @@ write_firefox_manifest() {
   "description": "Tab Archive native messaging host for SQLite-backed tab storage",
   "path": "$INSTALLED_HOST_PATH",
   "type": "stdio",
-  "allowed_extensions": ["$FIREFOX_EXTENSION_ID"]
+  "allowed_extensions": $allowed_extensions_json
 }
 EOF
 
   echo "Installed Firefox manifest:"
   echo "  $manifest_file"
+  echo "Allowed Firefox extension IDs:"
+  python3 - <<'PY' "$allowed_extensions_json"
+import json
+import sys
+
+for extension_id in json.loads(sys.argv[1]):
+    print(f"  - {extension_id}")
+PY
 }
 
 write_chromium_manifest() {

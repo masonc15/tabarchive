@@ -6,6 +6,29 @@ function getBrowserMock() {
 }
 
 describe('useNativeMessaging', () => {
+  it('maps Firefox native host allowlist errors to an actionable message', async () => {
+    const browserMock = getBrowserMock();
+    browserMock.runtime.getManifest.mockReturnValue({
+      name: 'Tab Archive',
+      browser_specific_settings: { gecko: { id: 'tabarchive@masonc15.github.io' } },
+    });
+    browserMock.runtime.sendMessage.mockResolvedValue({
+      ok: false,
+      error: 'Native host disconnected: No such native application tabarchive',
+    });
+
+    const { result } = renderHook(() => useNativeMessaging());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.connected).toBe(false);
+    expect(result.current.error).toBe(
+      'Native host not installed for this Firefox add-on. Run ./native/install.sh --browser firefox, then reload the extension.'
+    );
+  });
+
   it('maps stats fields from native response', async () => {
     const browserMock = getBrowserMock();
     browserMock.runtime.sendMessage.mockResolvedValue({
@@ -72,6 +95,28 @@ describe('useNativeMessaging', () => {
 
     expect(result.current.connected).toBe(false);
     expect(result.current.error).toBe('Connection refused');
+  });
+
+  it('normalizes thrown Firefox native-host lookup errors', async () => {
+    const browserMock = getBrowserMock();
+    browserMock.runtime.getManifest.mockReturnValue({
+      name: 'Tab Archive',
+      browser_specific_settings: { gecko: { id: 'tabarchive@masonc15.github.io' } },
+    });
+    browserMock.runtime.sendMessage.mockRejectedValue(
+      new Error('Native host disconnected: No such native application tabarchive')
+    );
+
+    const { result } = renderHook(() => useNativeMessaging());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.connected).toBe(false);
+    expect(result.current.error).toBe(
+      'Native host not installed for this Firefox add-on. Run ./native/install.sh --browser firefox, then reload the extension.'
+    );
   });
 
   it('search returns tabs from response', async () => {

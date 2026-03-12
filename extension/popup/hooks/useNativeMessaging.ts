@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import browser from 'webextension-polyfill';
 import type { ArchivedTab, AppSettings } from '../types';
+import { isFirefoxRuntime } from '../../runtime';
 
 interface NativeResponse {
   ok: boolean;
@@ -40,15 +41,33 @@ export function useNativeMessaging(): UseNativeMessagingResult {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const normalizeNativeError = useCallback((message: string) => {
+    if (
+      isFirefoxRuntime() &&
+      /No such native application tabarchive/i.test(message)
+    ) {
+      return 'Native host not installed for this Firefox add-on. Run ./native/install.sh --browser firefox, then reload the extension.';
+    }
+
+    return message;
+  }, []);
+
   const rawSendMessage = useCallback(async (message: Record<string, unknown>): Promise<NativeResponse> => {
     try {
       const rawResponse = await browser.runtime.sendMessage(message);
-      return (rawResponse as NativeResponse | undefined) || { ok: false, error: 'No response' };
+      const response = (rawResponse as NativeResponse | undefined) || { ok: false, error: 'No response' };
+      if (response.error) {
+        return {
+          ...response,
+          error: normalizeNativeError(response.error),
+        };
+      }
+      return response;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      return { ok: false, error: errorMessage };
+      return { ok: false, error: normalizeNativeError(errorMessage) };
     }
-  }, []);
+  }, [normalizeNativeError]);
 
   const sendMessage = useCallback(async (message: Record<string, unknown>): Promise<NativeResponse> => {
     const response = await rawSendMessage(message);
