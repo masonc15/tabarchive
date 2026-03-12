@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TabList } from '../popup/components/TabList';
 import type { ArchivedTab } from '../popup/types';
 
@@ -50,5 +50,28 @@ describe('TabList', () => {
     const tabs = makeTabs(3);
     render(<TabList tabs={tabs} loading={true} onRestore={vi.fn()} {...paginationProps} />);
     expect(screen.getByText('Searching...')).toBeInTheDocument();
+  });
+
+  it('does not leak restoring state to the next tab after removing a restored row', async () => {
+    const tabs = makeTabs(2);
+    const onRestore = vi.fn().mockResolvedValue(true);
+    const { rerender } = render(
+      <TabList tabs={tabs} loading={false} onRestore={onRestore} {...paginationProps} />
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restore tab' })[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Restore tab' })[0]).toBeDisabled();
+    });
+
+    await act(async () => {
+      rerender(
+        <TabList tabs={tabs.slice(1)} loading={false} onRestore={onRestore} {...paginationProps} />
+      );
+    });
+
+    expect(screen.getByText('Tab 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Restore tab' })).not.toBeDisabled();
   });
 });

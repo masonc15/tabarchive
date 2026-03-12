@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ArchivedTab } from '../types';
 
 interface TabItemProps {
@@ -37,6 +37,10 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
   const [hovering, setHovering] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const safeFaviconUrl = getSafeFaviconUrl(tab.faviconUrl);
+
+  useEffect(() => {
+    setRestoring(false);
+  }, [tab.id]);
 
   const handleRestore = async () => {
     setRestoring(true);

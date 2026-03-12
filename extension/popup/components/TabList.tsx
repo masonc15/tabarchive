@@ -15,7 +15,6 @@ interface TabListProps {
 interface ItemData {
   tabs: ArchivedTab[];
   onRestore: (tab: ArchivedTab) => Promise<boolean> | boolean;
-  hasMore: boolean;
 }
 
 const ITEM_HEIGHT = 54;
@@ -41,7 +40,7 @@ const Row = memo(({ index, style, data }: ListChildComponentProps<ItemData>) => 
 });
 
 export function TabList({ tabs, loading, onRestore, loadMore, hasMore, loadingMore }: TabListProps) {
-  const itemData = React.useMemo(() => ({ tabs, onRestore, hasMore }), [tabs, onRestore, hasMore]);
+  const itemData = React.useMemo(() => ({ tabs, onRestore }), [tabs, onRestore]);
   const itemCount = tabs.length + (hasMore ? 1 : 0);
 
   const handleItemsRendered = useCallback(({ visibleStopIndex }: ListOnItemsRenderedProps) => {
@@ -97,6 +96,7 @@ export function TabList({ tabs, loading, onRestore, loadMore, hasMore, loadingMo
         itemCount={itemCount}
         itemSize={ITEM_HEIGHT}
         itemData={itemData}
+        itemKey={(index, data) => (index >= data.tabs.length ? 'loading-more' : data.tabs[index].id)}
         onItemsRendered={handleItemsRendered}
       >
         {Row}
