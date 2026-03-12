@@ -1,0 +1,100 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, for example v1.0.5"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify tag matches version files
+        run: python3 scripts/check_release_version.py "${RELEASE_TAG#v}"
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: npm install --no-package-lock
+
+      - name: Run extension tests
+        working-directory: extension
+        run: npm test
+
+      - name: Run native tests
+        run: python3 -m pytest native/tests -q
+
+      - name: Build Firefox extension
+        working-directory: extension
+        run: npm run build
+
+      - name: Package Firefox XPI
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          cd extension/dist
+          zip -qr "../../tabarchive-${VERSION}-firefox.xpi" .
+
+      - name: Build Chromium extension
+        working-directory: extension
+        run: npm run build:chromium
+
+      - name: Package Chromium ZIP
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          cd extension/dist
+          zip -qr "../../tabarchive-${VERSION}-chromium.zip" .
+
+      - name: Generate checksums
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          sha256sum \
+            "tabarchive-${VERSION}-firefox.xpi" \
+            "tabarchive-${VERSION}-chromium.zip" \
+            > "tabarchive-${VERSION}-checksums.txt"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${RELEASE_TAG}"
+          VERSION="${TAG#v}"
+          ASSETS=(
+            "tabarchive-${VERSION}-firefox.xpi"
+            "tabarchive-${VERSION}-chromium.zip"
+            "tabarchive-${VERSION}-checksums.txt"
+          )
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          else
+            gh release create "$TAG" "${ASSETS[@]}" \
+              --title "$TAG" \
+              --generate-notes
+          fi

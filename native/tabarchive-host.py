@@ -25,6 +25,7 @@ DEFAULT_EXPORT_CHUNK = 5000
 MAX_LOG_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 3
 MAX_FAVICON_BYTES = 2048  # strip data URIs larger than this
+APP_VERSION = "1.0.5"
 
 DATA_DIR = Path.home() / ".tabarchive"
 DB_PATH = DATA_DIR / "tabs.db"
@@ -493,7 +494,7 @@ def handle_vacuum(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, A
 
 def handle_ping(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, Any]:
     """Health check."""
-    return {"ok": True, "version": "1.0.5"}
+    return {"ok": True, "version": APP_VERSION}
 
 
 HANDLERS = {
