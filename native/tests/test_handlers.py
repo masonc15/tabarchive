@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import sqlite3
+import stat
 import time
 from pathlib import Path
 
@@ -14,6 +15,14 @@ spec = importlib.util.spec_from_file_location("tabarchive_host", HOST_PATH)
 module = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(module)
+
+
+def load_module(module_name: str) -> object:
+    spec = importlib.util.spec_from_file_location(module_name, HOST_PATH)
+    loaded_module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(loaded_module)
+    return loaded_module
 
 
 @pytest.fixture()
@@ -36,6 +45,30 @@ def _insert_tab(conn, url="https://example.com", title="Example", closed_at=None
     )
     conn.commit()
     return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+class TestModuleImport:
+    def test_import_has_no_filesystem_side_effects(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        load_module("tabarchive_host_import_only")
+
+        assert not (tmp_path / ".tabarchive").exists()
+
+    def test_runtime_setup_applies_secure_permissions(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        loaded_module = load_module("tabarchive_host_permissions")
+
+        loaded_module.configure_logging()
+        conn = loaded_module.get_connection()
+        conn.close()
+
+        data_dir = tmp_path / ".tabarchive"
+        db_path = data_dir / "tabs.db"
+        log_path = data_dir / "host.log"
+
+        assert stat.S_IMODE(data_dir.stat().st_mode) == 0o700
+        assert stat.S_IMODE(db_path.stat().st_mode) == 0o600
+        assert stat.S_IMODE(log_path.stat().st_mode) == 0o600
 
 
 # ---------------------------------------------------------------------------
@@ -73,14 +106,14 @@ class TestHandleArchive:
         result = module.handle_archive(conn, {
             "url": "https://example.com",
             "title": "Example",
-            "faviconUrl": "https://example.com/favicon.ico",
+            "faviconUrl": "data:image/png;base64,AAAA",
         })
         assert result == {"ok": True, "archived": 1}
 
         row = conn.execute("SELECT * FROM tabs").fetchone()
         assert row["url"] == "https://example.com"
         assert row["title"] == "Example"
-        assert row["favicon_url"] == "https://example.com/favicon.ico"
+        assert row["favicon_url"] == "data:image/png;base64,AAAA"
 
     def test_archive_batch(self, conn):
         result = module.handle_archive(conn, {
@@ -126,10 +159,34 @@ class TestHandleArchive:
     def test_archive_accepts_snake_case_favicon(self, conn):
         module.handle_archive(conn, {
             "url": "https://example.com",
-            "favicon_url": "https://example.com/icon.png",
+            "favicon_url": "data:image/png;base64,BBBB",
         })
         row = conn.execute("SELECT favicon_url FROM tabs").fetchone()
-        assert row["favicon_url"] == "https://example.com/icon.png"
+        assert row["favicon_url"] == "data:image/png;base64,BBBB"
+
+    def test_archive_strips_remote_favicon_urls(self, conn):
+        module.handle_archive(conn, {
+            "url": "https://example.com",
+            "faviconUrl": "https://example.com/favicon.ico",
+        })
+        row = conn.execute("SELECT favicon_url FROM tabs").fetchone()
+        assert row["favicon_url"] is None
+
+    def test_archive_strips_oversized_data_favicons(self, conn):
+        oversized = "data:image/png;base64," + ("A" * (module.MAX_FAVICON_BYTES + 1))
+        module.handle_archive(conn, {
+            "url": "https://example.com",
+            "faviconUrl": oversized,
+        })
+        row = conn.execute("SELECT favicon_url FROM tabs").fetchone()
+        assert row["favicon_url"] is None
+
+    def test_init_schema_clears_legacy_remote_favicons(self, conn):
+        _insert_tab(conn, favicon_url="https://example.com/favicon.ico")
+        module.init_schema(conn)
+
+        row = conn.execute("SELECT favicon_url FROM tabs").fetchone()
+        assert row["favicon_url"] is None
 
     def test_archive_populates_fts_index(self, conn):
         module.handle_archive(conn, {"url": "https://example.com", "title": "Unique Title"})
@@ -214,16 +271,30 @@ class TestHandleSearch:
         assert result["count"] == 1
 
     def test_search_returns_correct_fields(self, conn):
-        _insert_tab(conn, url="https://example.com", title="Test", favicon_url="https://example.com/icon.png", metadata={"key": "val"})
+        _insert_tab(
+            conn,
+            url="https://example.com",
+            title="Test",
+            favicon_url="data:image/png;base64,CCCC",
+            metadata={"key": "val"},
+        )
 
         result = module.handle_search(conn, {"query": "Test"})
         tab = result["tabs"][0]
         assert "id" in tab
         assert tab["url"] == "https://example.com"
         assert tab["title"] == "Test"
-        assert tab["faviconUrl"] == "https://example.com/icon.png"
+        assert tab["faviconUrl"] == "data:image/png;base64,CCCC"
         assert "closedAt" in tab
         assert tab["metadata"] == {"key": "val"}
+
+    def test_search_clamps_negative_limit_and_offset(self, conn):
+        _insert_tab(conn, title="Negative Limit Test")
+
+        result = module.handle_search(conn, {"query": "Negative", "limit": -10, "offset": -5})
+        assert result["ok"] is True
+        assert result["count"] == 1
+        assert "hasMore" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +336,14 @@ class TestHandleRecent:
     def test_recent_empty_database(self, conn):
         result = module.handle_recent(conn, {})
         assert result == {"ok": True, "tabs": [], "count": 0}
+
+    def test_recent_clamps_negative_limit_and_offset(self, conn):
+        _insert_tab(conn, title="Recent Clamp")
+
+        result = module.handle_recent(conn, {"limit": -1, "offset": -10})
+        assert result["ok"] is True
+        assert result["count"] == 1
+        assert "hasMore" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -423,9 +502,9 @@ class TestHandleStats:
         assert result["oldestClosedAt"] == 1000
         assert result["newestClosedAt"] == 3000
 
-    def test_stats_includes_db_path(self, conn):
+    def test_stats_excludes_db_path(self, conn):
         result = module.handle_stats(conn, {})
-        assert "dbPath" in result
+        assert "dbPath" not in result
         assert "dbSizeBytes" in result
 
     def test_stats_with_since_closed_at_returns_unseen_archived(self, conn):
@@ -508,6 +587,32 @@ class TestHandleExport:
         result = module.handle_export(conn, {})
         assert result == {"ok": True, "tabs": [], "count": 0}
 
+    def test_export_trims_page_to_response_size_limit(self, conn):
+        metadata = {"notes": "x" * 120_000}
+        for index in range(5):
+            _insert_tab(
+                conn,
+                url=f"https://example.com/{index}",
+                title=f"Tab {index}",
+                metadata=metadata,
+                closed_at=1000 + index,
+            )
+
+        result = module.handle_export(conn, {"chunkSize": 5, "offset": 0})
+        assert result["ok"] is True
+        assert 0 < result["count"] < 5
+        assert result["hasMore"] is True
+        assert result["nextOffset"] == result["count"]
+        assert module.response_payload_size(result) <= module.MAX_RESPONSE_BYTES
+
+    def test_export_errors_when_single_row_cannot_fit_response_limit(self, conn):
+        metadata = {"notes": "x" * module.MAX_RESPONSE_BYTES}
+        _insert_tab(conn, metadata=metadata)
+
+        result = module.handle_export(conn, {"chunkSize": 1, "offset": 0})
+        assert result["ok"] is False
+        assert "response size limit" in result["error"]
+
 
 # ---------------------------------------------------------------------------
 # handle_import
@@ -528,12 +633,17 @@ class TestHandleImport:
     def test_import_snake_case_fields(self, conn):
         result = module.handle_import(conn, {
             "tabs": [
-                {"url": "https://a.com", "title": "A", "closed_at": 1000, "favicon_url": "https://a.com/icon.png"},
+                {
+                    "url": "https://a.com",
+                    "title": "A",
+                    "closed_at": 1000,
+                    "favicon_url": "data:image/png;base64,DDDD",
+                },
             ],
         })
         assert result["imported"] == 1
         row = conn.execute("SELECT favicon_url, closed_at FROM tabs").fetchone()
-        assert row["favicon_url"] == "https://a.com/icon.png"
+        assert row["favicon_url"] == "data:image/png;base64,DDDD"
         assert row["closed_at"] == 1000
 
     def test_import_with_restored_at(self, conn):
@@ -577,6 +687,26 @@ class TestHandleImport:
 
         row = conn.execute("SELECT closed_at FROM tabs").fetchone()
         assert before <= row["closed_at"] <= after
+
+    def test_import_strips_remote_favicon_urls(self, conn):
+        result = module.handle_import(conn, {
+            "tabs": [
+                {
+                    "url": "https://example.com",
+                    "faviconUrl": "https://example.com/favicon.ico",
+                }
+            ],
+        })
+        assert result["imported"] == 1
+        row = conn.execute("SELECT favicon_url FROM tabs").fetchone()
+        assert row["favicon_url"] is None
+
+    def test_import_rejects_batches_over_limit(self, conn):
+        tabs = [{"url": f"https://example.com/{index}"} for index in range(module.MAX_IMPORT_BATCH + 1)]
+
+        result = module.handle_import(conn, {"tabs": tabs})
+        assert result["ok"] is False
+        assert "tab limit" in result["error"]
 
 
 # ---------------------------------------------------------------------------

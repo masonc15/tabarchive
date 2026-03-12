@@ -5,6 +5,8 @@ set -euo pipefail
 HOST_NAME="tabarchive"
 BROWSER="firefox"
 DATA_DIR="$HOME/.tabarchive"
+BIN_DIR="$DATA_DIR/bin"
+HOST_PATH="$BIN_DIR/tabarchive-host.py"
 
 usage() {
   cat <<'EOF'
@@ -132,6 +134,15 @@ case "$BROWSER" in
     remove_chromium_manifest chromium
     ;;
 esac
+
+if [[ -f "$HOST_PATH" ]]; then
+  rm "$HOST_PATH"
+  echo "Removed installed host: $HOST_PATH"
+fi
+
+if [[ -d "$BIN_DIR" ]]; then
+  rmdir "$BIN_DIR" 2>/dev/null || true
+fi
 
 # Ask about data directory
 if [[ -d "$DATA_DIR" ]]; then

@@ -3,9 +3,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOST_PATH="$SCRIPT_DIR/tabarchive-host.py"
+HOST_SOURCE_PATH="$SCRIPT_DIR/tabarchive-host.py"
+DATA_DIR="$HOME/.tabarchive"
+BIN_DIR="$DATA_DIR/bin"
+INSTALLED_HOST_PATH="$BIN_DIR/tabarchive-host.py"
 HOST_NAME="tabarchive"
-DEFAULT_FIREFOX_EXTENSION_ID="tabarchive@localhost"
+DEFAULT_FIREFOX_EXTENSION_ID="tabarchive@masonc15.github.io"
 
 BROWSER="firefox"
 EXTENSION_ID="${TABARCHIVE_EXTENSION_ID:-}"
@@ -22,7 +25,7 @@ Options:
       Required for chrome/chrome-for-testing/chromium/all.
       Example: abcdefghijklmnopqrstuvwxyzabcdef
   --firefox-extension-id <id>
-      Default: tabarchive@localhost
+      Default: tabarchive@masonc15.github.io
   --help
 
 Examples:
@@ -135,7 +138,7 @@ write_firefox_manifest() {
 {
   "name": "$HOST_NAME",
   "description": "Tab Archive native messaging host for SQLite-backed tab storage",
-  "path": "$HOST_PATH",
+  "path": "$INSTALLED_HOST_PATH",
   "type": "stdio",
   "allowed_extensions": ["$FIREFOX_EXTENSION_ID"]
 }
@@ -157,7 +160,7 @@ write_chromium_manifest() {
 {
   "name": "$HOST_NAME",
   "description": "Tab Archive native messaging host for SQLite-backed tab storage",
-  "path": "$HOST_PATH",
+  "path": "$INSTALLED_HOST_PATH",
   "type": "stdio",
   "allowed_origins": ["chrome-extension://$EXTENSION_ID/"]
 }
@@ -167,11 +170,13 @@ EOF
   echo "  $manifest_file"
 }
 
-# Make host executable
-chmod +x "$HOST_PATH"
+install_host() {
+  mkdir -p "$DATA_DIR" "$BIN_DIR"
+  chmod 700 "$DATA_DIR" "$BIN_DIR"
+  install -m 700 "$HOST_SOURCE_PATH" "$INSTALLED_HOST_PATH"
+}
 
-# Create data directory
-mkdir -p "$HOME/.tabarchive"
+install_host
 
 case "$BROWSER" in
   firefox)
@@ -189,5 +194,5 @@ case "$BROWSER" in
 esac
 
 echo "Tab Archive native host installed successfully"
-echo "  Host: $HOST_PATH"
-echo "  Data: $HOME/.tabarchive/"
+echo "  Host: $INSTALLED_HOST_PATH"
+echo "  Data: $DATA_DIR/"
