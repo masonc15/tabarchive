@@ -236,6 +236,36 @@ describe('checkInactiveTabs', () => {
     expect(archived[0].url).toBe('https://inactive.com');
   });
 
+  it('skips incognito tabs during inactivity scans', async () => {
+    setSettingsForTests({ archiveAfterMinutes: 1, paused: false, minTabs: 0 });
+
+    const now = Date.now();
+    const tabs = [
+      { id: 1, url: 'https://private.com', title: 'Private', active: false, pinned: false, incognito: true },
+      { id: 2, url: 'https://normal.com', title: 'Normal', active: false, pinned: false, incognito: false },
+    ];
+    browserMock.tabs.query.mockResolvedValue(tabs);
+
+    setTabLastActiveForTests(
+      new Map([
+        [1, now - 60 * 60 * 1000],
+        [2, now - 60 * 60 * 1000],
+      ]),
+    );
+
+    const archived: any[] = [];
+    setNativeMessageHandlerForTests(async (msg) => {
+      archived.push(msg);
+      return { ok: true };
+    });
+
+    await checkInactiveTabs();
+
+    expect(archived).toHaveLength(1);
+    expect(archived[0].url).toBe('https://normal.com');
+    expect(browserMock.tabs.remove).toHaveBeenCalledWith(2);
+  });
+
   it('respects minTabs when deciding how many to archive', async () => {
     setSettingsForTests({ archiveAfterMinutes: 1, paused: false, minTabs: 2 });
 
@@ -267,6 +297,39 @@ describe('checkInactiveTabs', () => {
     // Only 1 tab archived (3 - minTabs(2) = 1), and it should be the oldest
     expect(archived).toHaveLength(1);
     expect(archived[0].url).toBe('https://a.com');
+  });
+
+  it('does not let incognito tabs increase archive pressure on normal tabs', async () => {
+    setSettingsForTests({ archiveAfterMinutes: 1, paused: false, minTabs: 2 });
+
+    const now = Date.now();
+    const tabs = [
+      { id: 1, url: 'https://a.com', title: 'A', active: false, pinned: false, incognito: false },
+      { id: 2, url: 'https://b.com', title: 'B', active: false, pinned: false, incognito: false },
+      { id: 3, url: 'https://private-a.com', title: 'Private A', active: false, pinned: false, incognito: true },
+      { id: 4, url: 'https://private-b.com', title: 'Private B', active: false, pinned: false, incognito: true },
+    ];
+    browserMock.tabs.query.mockResolvedValue(tabs);
+
+    setTabLastActiveForTests(
+      new Map([
+        [1, now - 60 * 60 * 1000],
+        [2, now - 45 * 60 * 1000],
+        [3, now - 60 * 60 * 1000],
+        [4, now - 60 * 60 * 1000],
+      ]),
+    );
+
+    const archived: any[] = [];
+    setNativeMessageHandlerForTests(async (msg) => {
+      archived.push(msg);
+      return { ok: true };
+    });
+
+    await checkInactiveTabs();
+
+    expect(archived).toHaveLength(0);
+    expect(browserMock.tabs.remove).not.toHaveBeenCalled();
   });
 
   it('cleans up tabLastActive for closed tabs', async () => {
@@ -372,11 +435,26 @@ describe('archiveTab', () => {
       action: 'archive',
       url: 'https://example.com',
       title: 'Example',
-      faviconUrl: 'https://example.com/icon.png',
+      faviconUrl: null,
     });
     expect(browserMock.tabs.remove).toHaveBeenCalledWith(5);
     expect(browserMock.action.setBadgeText).toHaveBeenCalledWith({ text: '1' });
     expect(browserMock.storage.local.set).toHaveBeenCalledWith({ badgeSessionArchivedCount: 1 });
+  });
+
+  it('skips incognito tabs during manual archive', async () => {
+    browserMock.tabs.query.mockResolvedValue([
+      { id: 5, url: 'https://private.example.com', title: 'Private', active: true, incognito: true },
+    ]);
+
+    const handler = vi.fn();
+    setNativeMessageHandlerForTests(handler);
+
+    const result = await onMessageHandler({ action: 'archiveTab' });
+
+    expect(result.ok).toBe(true);
+    expect(handler).not.toHaveBeenCalled();
+    expect(browserMock.tabs.remove).not.toHaveBeenCalled();
   });
 
   it('uses url as title fallback when title is missing', async () => {

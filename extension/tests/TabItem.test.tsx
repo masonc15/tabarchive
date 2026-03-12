@@ -8,7 +8,7 @@ const tab: ArchivedTab = {
   url: 'https://example.com/page',
   title: 'Example',
   closedAt: Date.now() - 60000,
-  faviconUrl: 'https://example.com/favicon.ico',
+  faviconUrl: 'data:image/png;base64,AAAA',
 };
 
 describe('TabItem', () => {
@@ -72,12 +72,18 @@ describe('TabItem', () => {
   it('shows favicon image when faviconUrl is provided', () => {
     render(<TabItem tab={tab} onRestore={vi.fn()} />);
     const img = screen.getByRole('img');
-    expect(img).toHaveAttribute('src', 'https://example.com/favicon.ico');
+    expect(img).toHaveAttribute('src', 'data:image/png;base64,AAAA');
   });
 
   it('shows fallback SVG when faviconUrl is null', () => {
     const noFavicon = { ...tab, faviconUrl: null };
     render(<TabItem tab={noFavicon} onRestore={vi.fn()} />);
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  it('shows fallback SVG for remote favicon URLs', () => {
+    const remoteFaviconTab = { ...tab, faviconUrl: 'https://example.com/favicon.ico' };
+    render(<TabItem tab={remoteFaviconTab} onRestore={vi.fn()} />);
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 

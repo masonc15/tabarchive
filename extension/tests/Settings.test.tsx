@@ -118,7 +118,7 @@ describe('Settings', () => {
 
   it('shows footer text about local storage', () => {
     renderSettings();
-    expect(screen.getByText(/stored locally/)).toBeInTheDocument();
+    expect(screen.getByText(/local storage managed by the native host/)).toBeInTheDocument();
   });
 
   it('renders all archive-after options', () => {
@@ -204,7 +204,7 @@ describe('Settings', () => {
       expect(sendMessage).toHaveBeenCalledWith({
         action: 'export',
         includeRestored: true,
-        chunkSize: 2000,
+        chunkSize: 200,
         offset: 0,
       });
     });

@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   minTabs: 20,
 };
 
-const EXPORT_CHUNK_SIZE = 2000;
+const EXPORT_CHUNK_SIZE = 200;
 
 const archiveOptions = [
   { value: 720, label: '12 hours' },
@@ -173,7 +173,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
     }
 
     const confirmed = window.confirm(
-      'Delete all archived tabs from ~/.tabarchive/tabs.db? This cannot be undone.',
+      'Delete all archived tabs stored locally by Tab Archive? This cannot be undone.',
     );
     if (!confirmed) {
       return;
@@ -300,8 +300,8 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
 
       <div style={styles.footer}>
         <p style={styles.footerText}>
-          Archived tabs are stored locally in ~/.tabarchive/tabs.db and persist
-          even if you clear browser data.
+          Archived tabs stay in local storage managed by the native host, even
+          if you clear browser data.
         </p>
       </div>
     </div>

@@ -26,9 +26,17 @@ function getDomain(url: string): string {
   }
 }
 
+function getSafeFaviconUrl(url?: string | null) {
+  if (typeof url !== 'string' || !url.startsWith('data:')) {
+    return null;
+  }
+  return url;
+}
+
 export function TabItem({ tab, onRestore }: TabItemProps) {
   const [hovering, setHovering] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const safeFaviconUrl = getSafeFaviconUrl(tab.faviconUrl);
 
   const handleRestore = async () => {
     setRestoring(true);
@@ -68,9 +76,9 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
       aria-label={`Restore tab: ${tab.title}`}
     >
       <div style={styles.favicon}>
-        {tab.faviconUrl ? (
+        {safeFaviconUrl ? (
           <img
-            src={tab.faviconUrl}
+            src={safeFaviconUrl}
             alt=""
             style={styles.faviconImg}
             onError={(e) => {

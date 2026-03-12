@@ -13,6 +13,7 @@ const BADGE_BACKGROUND_COLOR_PAUSED = '#8b3a3a';
 const BADGE_MAX_DISPLAY_COUNT = 9999;
 const BADGE_COMPACT_MAX_DISPLAY_COUNT = 99;
 const BADGE_SESSION_ARCHIVED_COUNT_STORAGE_KEY = 'badgeSessionArchivedCount';
+const MAX_SAFE_DATA_FAVICON_LENGTH = 2048;
 
 const DEFAULT_SETTINGS: AppSettings = {
   archiveAfterMinutes: 720,
@@ -39,6 +40,7 @@ let reconnectAttempts = 0;
 let inactiveCheckInProgress = false;
 let archivedCount = 0;
 let badgeBackgroundColor: string | null = null;
+type BrowserTabWithIncognito = browser.tabs.Tab & { incognito?: boolean };
 
 const mockState = IS_TEST ? createMockState() : null;
 
@@ -108,6 +110,21 @@ function normalizeTimestamp(input: unknown): number {
     return 0;
   }
   return Math.max(0, Math.floor(parsed));
+}
+
+function isIncognitoTab(tab: browser.tabs.Tab) {
+  return (tab as BrowserTabWithIncognito).incognito === true;
+}
+
+function isSafeStoredFaviconUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.startsWith('data:')) {
+    return null;
+  }
+  return value.length <= MAX_SAFE_DATA_FAVICON_LENGTH ? value : null;
+}
+
+function sanitizeFaviconForArchive(value: unknown) {
+  return isSafeStoredFaviconUrl(value);
 }
 
 export function formatBadgeText(count: number): string {
@@ -278,7 +295,12 @@ function sendNativeMessage(message: Record<string, any>) {
 }
 
 async function archiveTab(tab: browser.tabs.Tab) {
-  if (!tab.url || tab.url.startsWith('about:') || tab.url.startsWith('moz-extension:')) {
+  if (
+    !tab.url ||
+    tab.url.startsWith('about:') ||
+    tab.url.startsWith('moz-extension:') ||
+    isIncognitoTab(tab)
+  ) {
     return;
   }
 
@@ -291,7 +313,7 @@ async function archiveTab(tab: browser.tabs.Tab) {
       action: 'archive',
       url: tab.url,
       title: tab.title || tab.url,
-      faviconUrl: tab.favIconUrl || null,
+      faviconUrl: sanitizeFaviconForArchive(tab.favIconUrl),
     });
 
     if (response.ok) {
@@ -319,10 +341,11 @@ export async function checkInactiveTabs() {
     const thresholdMs = settings.archiveAfterMinutes * 60 * 1000;
     const now = Date.now();
 
-    const tabs = (await browser.tabs.query({})) as browser.tabs.Tab[];
+    const tabs = (await browser.tabs.query({})) as BrowserTabWithIncognito[];
+    const nonIncognitoTabs = tabs.filter((tab) => !isIncognitoTab(tab));
 
     const activeTabIds = new Set(
-      tabs.map((t: browser.tabs.Tab) => t.id).filter(Boolean) as number[],
+      nonIncognitoTabs.map((t) => t.id).filter(Boolean) as number[],
     );
     for (const tabId of tabLastActive.keys()) {
       if (!activeTabIds.has(tabId)) {
@@ -330,13 +353,13 @@ export async function checkInactiveTabs() {
       }
     }
 
-    if (tabs.length <= settings.minTabs) {
+    if (nonIncognitoTabs.length <= settings.minTabs) {
       return;
     }
 
-    const sortedTabs = tabs
-      .filter((tab: browser.tabs.Tab) => !tab.pinned && !tab.active && tab.id)
-      .map((tab: browser.tabs.Tab) => ({
+    const sortedTabs = nonIncognitoTabs
+      .filter((tab) => !tab.pinned && !tab.active && tab.id)
+      .map((tab) => ({
         tab,
         lastActive: tabLastActive.get(tab.id!) || now,
       }))
@@ -345,7 +368,7 @@ export async function checkInactiveTabs() {
     const tabsToArchive = sortedTabs.filter(
       ({ lastActive }: { lastActive: number }) => now - lastActive > thresholdMs,
     );
-    const maxToArchive = Math.max(0, tabs.length - settings.minTabs);
+    const maxToArchive = Math.max(0, nonIncognitoTabs.length - settings.minTabs);
 
     for (let i = 0; i < Math.min(tabsToArchive.length, maxToArchive); i++) {
       await archiveTab(tabsToArchive[i].tab);
@@ -358,11 +381,23 @@ export async function checkInactiveTabs() {
 }
 
 browser.tabs.onActivated.addListener(({ tabId }: { tabId: number }) => {
-  tabLastActive.set(tabId, Date.now());
+  void browser.tabs.get(tabId)
+    .then((tab: browser.tabs.Tab) => {
+      if (isIncognitoTab(tab)) {
+        tabLastActive.delete(tabId);
+        return;
+      }
+      tabLastActive.set(tabId, Date.now());
+    })
+    .catch(() => {});
 });
 
-browser.tabs.onUpdated.addListener((tabId: number, changeInfo: { status?: string }) => {
+browser.tabs.onUpdated.addListener((tabId: number, changeInfo: { status?: string }, tab: browser.tabs.Tab) => {
   if (changeInfo.status === 'complete') {
+    if (isIncognitoTab(tab)) {
+      tabLastActive.delete(tabId);
+      return;
+    }
     tabLastActive.set(tabId, Date.now());
   }
 });
@@ -486,7 +521,7 @@ async function init() {
   const tabs = (await browser.tabs.query({})) as browser.tabs.Tab[];
   const now = Date.now();
   tabs.forEach((tab) => {
-    if (tab.id && !tabLastActive.has(tab.id)) {
+    if (tab.id && !tabLastActive.has(tab.id) && !isIncognitoTab(tab)) {
       tabLastActive.set(tab.id, now);
     }
   });
@@ -551,7 +586,7 @@ function createMockState() {
             id: tab.id ?? Date.now() + Math.floor(Math.random() * 1000),
             url: tab.url,
             title: tab.title || tab.url,
-            faviconUrl: tab.faviconUrl || null,
+            faviconUrl: sanitizeFaviconForArchive(tab.faviconUrl),
             closedAt: tab.closedAt || Date.now(),
             restoredAt: null,
           });
@@ -614,7 +649,6 @@ function createMockState() {
           totalAll: tabs.length,
           oldestClosedAt: closedTimes.length ? Math.min(...closedTimes) : null,
           newestClosedAt: closedTimes.length ? Math.max(...closedTimes) : null,
-          dbPath: 'mock',
           dbSizeBytes: 0,
           unseenArchived,
         };

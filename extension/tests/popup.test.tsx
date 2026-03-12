@@ -59,6 +59,13 @@ vi.mock('../popup/components/SearchBar', () => ({
   ),
 }));
 
+beforeEach(() => {
+  const browserMock = (globalThis as any).__browserMock__;
+  vi.clearAllMocks();
+  browserMock.tabs.create.mockResolvedValue(undefined);
+  browserMock.runtime.sendMessage.mockResolvedValue(undefined);
+});
+
 describe('Popup App', () => {
   it('notifies background when popup opens and closes', async () => {
     const browserMock = (globalThis as any).__browserMock__;
@@ -98,9 +105,42 @@ describe('Popup App', () => {
       fireEvent.click(restoreButton);
     });
 
-    expect(mocks.restore).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mocks.restore).toHaveBeenCalled();
+    });
     expect(screen.getByText('Example')).toBeInTheDocument();
-    expect(browserMock.tabs.create).not.toHaveBeenCalled();
+    expect(browserMock.tabs.create).toHaveBeenCalledWith({ url: 'https://example.com/page' });
+    expect(screen.getByText('Restore failed: The archive entry could not be updated.')).toBeInTheDocument();
+  });
+
+  it('does not call restore when tab creation fails', async () => {
+    const browserMock = (globalThis as any).__browserMock__;
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    browserMock.tabs.create.mockRejectedValueOnce(new Error('Blocked URL'));
+    const { mocks, hook } = createMocks({
+      restore: vi.fn().mockResolvedValue(true),
+    });
+
+    await act(async () => {
+      render(<App useNativeMessagingHook={hook} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Example' }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(browserMock.tabs.create).toHaveBeenCalledWith({ url: 'https://example.com/page' });
+    expect(mocks.restore).not.toHaveBeenCalled();
+    expect(screen.getByText('Example')).toBeInTheDocument();
+    expect(screen.getByText('Restore failed: Blocked URL')).toBeInTheDocument();
+
+    consoleErrorSpy.mockRestore();
   });
 
   it('loads recent tabs on mount when connected', async () => {
@@ -174,7 +214,7 @@ describe('Popup App', () => {
 
   it('removes tab from list on successful restore', async () => {
     const browserMock = (globalThis as any).__browserMock__;
-    const { hook } = createMocks({
+    const { mocks, hook } = createMocks({
       restore: vi.fn().mockResolvedValue(true),
     });
 
@@ -195,6 +235,7 @@ describe('Popup App', () => {
     });
 
     expect(browserMock.tabs.create).toHaveBeenCalledWith({ url: 'https://example.com/page' });
+    expect(mocks.restore).toHaveBeenCalledWith(1);
     expect(screen.queryByText('Example')).not.toBeInTheDocument();
   });
 

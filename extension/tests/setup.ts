@@ -12,6 +12,7 @@ const browserMock = {
   },
   tabs: {
     create: vi.fn(),
+    get: vi.fn(),
     query: vi.fn(),
     remove: vi.fn(),
     onActivated: { addListener: vi.fn() },

@@ -67,6 +67,7 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   const loadingMoreRef = useRef(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { sendMessage, search, restore, getRecent, getSettings, updateSettings, connected, error } = useNativeMessagingHook();
 
@@ -78,6 +79,7 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   }, []);
 
   const handleSearch = useCallback(async (query: string) => {
+    setActionError(null);
     setSearchQuery(query);
     searchQueryRef.current = query;
     setLoading(true);
@@ -119,16 +121,28 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   }, [search, getRecent]);
 
   const handleRestore = useCallback(async (tab: ArchivedTab): Promise<boolean> => {
+    setActionError(null);
+    try {
+      await browser.tabs.create({ url: tab.url });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to reopen tab';
+      console.error('Tab creation failed:', err);
+      setActionError(`Restore failed: ${message}`);
+      return false;
+    }
+
     try {
       const ok = await restore(tab.id);
       if (!ok) {
+        setActionError('Restore failed: The archive entry could not be updated.');
         return false;
       }
-      browser.tabs.create({ url: tab.url });
       setTabs(prev => prev.filter(t => t.id !== tab.id));
       return true;
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
       console.error('Restore failed:', err);
+      setActionError(`Restore failed: ${message}`);
       return false;
     }
   }, [restore]);
@@ -206,13 +220,13 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
         </nav>
       </header>
 
-      {error && (
+      {(actionError || error) && (
         <div style={styles.error}>
-          {error}
+          {actionError || error}
         </div>
       )}
 
-      {!connected && !error && (
+      {!connected && !(actionError || error) && (
         <div style={styles.connecting}>
           Connecting to native host...
         </div>
