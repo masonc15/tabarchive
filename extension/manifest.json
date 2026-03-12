@@ -5,7 +5,7 @@
   "description": "Arc-style tab archiving with SQLite backend and sub-100ms full-text search",
   "browser_specific_settings": {
     "gecko": {
-      "id": "tabarchive@localhost",
+      "id": "tabarchive@masonc15.github.io",
       "strict_min_version": "109.0"
     }
   },

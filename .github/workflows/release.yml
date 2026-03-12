@@ -31,18 +31,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      - name: Install Python test tooling
+        run: python3 -m pip install pytest
+
       - name: Verify tag matches version files
         run: python3 scripts/check_release_version.py "${RELEASE_TAG#v}"
 
       - name: Install extension dependencies
         working-directory: extension
-        run: npm install --no-package-lock
+        run: npm ci
 
       - name: Run extension tests
         working-directory: extension
@@ -85,6 +90,13 @@ jobs:
         run: |
           TAG="${RELEASE_TAG}"
           VERSION="${TAG#v}"
+          RELEASE_NOTE_PREFIX="$(cat <<'EOF'
+Developer install only.
+
+These artifacts are unsigned extension builds for manual loading on macOS or
+Linux. Install the native host from this repository before using them.
+EOF
+)"
           ASSETS=(
             "tabarchive-${VERSION}-firefox.xpi"
             "tabarchive-${VERSION}-chromium.zip"
@@ -92,9 +104,16 @@ jobs:
           )
 
           if gh release view "$TAG" >/dev/null 2>&1; then
+            BODY="$(gh release view "$TAG" --json body --jq .body)"
+            if ! printf '%s' "$BODY" | grep -Fq "Developer install only."; then
+              gh release edit "$TAG" --notes "${RELEASE_NOTE_PREFIX}
+
+${BODY}"
+            fi
             gh release upload "$TAG" "${ASSETS[@]}" --clobber
           else
             gh release create "$TAG" "${ASSETS[@]}" \
               --title "$TAG" \
+              --notes "$RELEASE_NOTE_PREFIX" \
               --generate-notes
           fi
