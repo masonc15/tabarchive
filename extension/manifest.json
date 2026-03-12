@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tab Archive",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Arc-style tab archiving with SQLite backend and sub-100ms full-text search",
   "browser_specific_settings": {
     "gecko": {

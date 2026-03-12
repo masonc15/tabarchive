@@ -493,7 +493,7 @@ def handle_vacuum(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, A
 
 def handle_ping(conn: sqlite3.Connection, data: dict[str, Any]) -> dict[str, Any]:
     """Health check."""
-    return {"ok": True, "version": "1.0.4"}
+    return {"ok": True, "version": "1.0.5"}
 
 
 HANDLERS = {
