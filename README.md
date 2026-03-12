@@ -4,11 +4,7 @@ Tabarchive is a browser extension plus a native messaging host for local tab
 archiving. It gives you recent archived tabs, full-text search, and archive
 management from a single popup while keeping the archive on your machine.
 
-<img
-  src="assets/readme/tabarchive-popup.png"
-  alt="Tabarchive popup showing recent archived tabs, search, and settings."
-  width="400"
->
+<img src="assets/readme/tabarchive-popup.png" alt="Tabarchive popup showing recent archived tabs, search, and settings." width="400">
 
 ## Supported platforms
 
