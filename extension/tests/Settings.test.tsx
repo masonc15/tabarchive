@@ -27,6 +27,10 @@ function renderSettings(overrides: {
   };
 }
 
+async function waitForStatsToRender() {
+  await screen.findByText('Statistics');
+}
+
 describe('Settings', () => {
   it('does not render a pause toggle in the settings panel', () => {
     renderSettings();
@@ -190,8 +194,11 @@ describe('Settings', () => {
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
     renderSettings({ sendMessage });
+    await waitForStatsToRender();
 
-    await user.click(screen.getByRole('button', { name: 'Export archive data' }));
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Export archive data' }));
+    });
 
     await waitFor(() => {
       expect(sendMessage).toHaveBeenCalledWith({
@@ -230,7 +237,10 @@ describe('Settings', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderSettings({ sendMessage });
-    await user.click(screen.getByRole('button', { name: 'Clear archived tabs' }));
+    await waitForStatsToRender();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Clear archived tabs' }));
+    });
 
     await waitFor(() => {
       expect(sendMessage).toHaveBeenCalledWith({
@@ -254,7 +264,10 @@ describe('Settings', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
     renderSettings({ sendMessage });
-    await user.click(screen.getByRole('button', { name: 'Clear archived tabs' }));
+    await waitForStatsToRender();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Clear archived tabs' }));
+    });
 
     expect(confirmSpy).toHaveBeenCalled();
     expect(sendMessage).not.toHaveBeenCalledWith({
@@ -272,7 +285,9 @@ describe('Settings', () => {
       onChange,
     });
 
-    await user.click(screen.getByRole('button', { name: 'Reset settings' }));
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Reset settings' }));
+    });
 
     expect(onChange).toHaveBeenCalledWith({
       archiveAfterMinutes: 720,

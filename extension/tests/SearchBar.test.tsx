@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SearchBar } from '../popup/components/SearchBar';
 
@@ -15,13 +15,14 @@ describe('SearchBar', () => {
 
   it('calls onChange after debounce delay', async () => {
     vi.useFakeTimers();
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const onChange = vi.fn();
 
     render(<SearchBar value="" onChange={onChange} />);
     const input = screen.getByPlaceholderText('Search archived tabs...');
 
-    await user.type(input, 'hello');
+    act(() => {
+      fireEvent.change(input, { target: { value: 'hello' } });
+    });
 
     // onChange should not have been called yet (debounced)
     expect(onChange).not.toHaveBeenCalled();
@@ -46,7 +47,9 @@ describe('SearchBar', () => {
     const clearButton = screen.getByRole('button', { name: 'Clear search' });
     expect(clearButton).toBeInTheDocument();
 
-    await user.click(clearButton);
+    await act(async () => {
+      await user.click(clearButton);
+    });
 
     expect(onChange).toHaveBeenCalledWith('');
   });
@@ -76,7 +79,9 @@ describe('SearchBar', () => {
     render(<SearchBar value="existing" onChange={onChange} />);
 
     const clearButton = screen.getByRole('button', { name: 'Clear search' });
-    await user.click(clearButton);
+    await act(async () => {
+      await user.click(clearButton);
+    });
 
     expect(onChange).toHaveBeenCalledWith('');
   });

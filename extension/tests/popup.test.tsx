@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../popup/popup';
 
@@ -152,21 +152,24 @@ describe('Popup App', () => {
     await act(async () => {
       render(<App useNativeMessagingHook={hook} />);
     });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Pause archiving' })).toBeEnabled();
+    });
+
     await act(async () => {
-      await Promise.resolve();
+      await user.click(screen.getByRole('button', { name: 'Pause archiving' }));
     });
 
-    const pauseButton = screen.getByRole('button', { name: 'Pause archiving' });
-    expect(pauseButton).toBeEnabled();
-
-    await user.click(pauseButton);
-
-    expect(mocks.updateSettings).toHaveBeenCalledWith({
-      archiveAfterMinutes: 720,
-      paused: true,
-      minTabs: 20,
+    await waitFor(() => {
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        archiveAfterMinutes: 720,
+        paused: true,
+        minTabs: 20,
+      });
     });
-    expect(screen.getByRole('button', { name: 'Resume archiving' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Resume archiving' })).toHaveAttribute('aria-pressed', 'true');
+    });
   });
 
   it('removes tab from list on successful restore', async () => {
@@ -232,13 +235,21 @@ describe('Popup App', () => {
     await act(async () => {
       render(<App useNativeMessagingHook={hook} />);
     });
+    await waitFor(() => {
+      expect(screen.getByTestId('tab-list')).toBeInTheDocument();
+    });
 
-    expect(screen.getByTestId('tab-list')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Settings' }));
+    });
     expect(screen.queryByTestId('tab-list')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Statistics')).toBeInTheDocument();
+    });
 
-    await user.click(screen.getByRole('button', { name: 'Search' }));
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Search' }));
+    });
     expect(screen.getByTestId('tab-list')).toBeInTheDocument();
   });
 
