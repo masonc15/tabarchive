@@ -12,7 +12,18 @@ permissions:
   contents: read
 
 jobs:
+  lint-workflows:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Lint GitHub Actions workflows
+        run: ./scripts/run_actionlint.sh
+
   test:
+    needs: lint-workflows
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

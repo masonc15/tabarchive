@@ -88,25 +88,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${RELEASE_TAG}"
-          VERSION="${TAG#v}"
-          RELEASE_NOTE_PREFIX=$'Developer install only.\n\nThese artifacts are unsigned extension builds for manual loading on macOS or\nLinux. Install the native host from this repository before using them.'
-          ASSETS=(
-            "tabarchive-${VERSION}-firefox.xpi"
-            "tabarchive-${VERSION}-chromium.zip"
+          VERSION="${RELEASE_TAG#v}"
+          python3 scripts/publish_github_release.py \
+            "${RELEASE_TAG}" \
+            "tabarchive-${VERSION}-firefox.xpi" \
+            "tabarchive-${VERSION}-chromium.zip" \
             "tabarchive-${VERSION}-checksums.txt"
-          )
-
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            BODY="$(gh release view "$TAG" --json body --jq .body)"
-            if ! printf '%s' "$BODY" | grep -Fq "Developer install only."; then
-              printf -v UPDATED_NOTES '%s\n\n%s' "$RELEASE_NOTE_PREFIX" "$BODY"
-              gh release edit "$TAG" --notes "$UPDATED_NOTES"
-            fi
-            gh release upload "$TAG" "${ASSETS[@]}" --clobber
-          else
-            gh release create "$TAG" "${ASSETS[@]}" \
-              --title "$TAG" \
-              --notes "$RELEASE_NOTE_PREFIX" \
-              --generate-notes
-          fi
