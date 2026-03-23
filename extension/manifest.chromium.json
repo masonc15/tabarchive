@@ -4,11 +4,7 @@
   "version": "1.0.6",
   "description": "Arc-style tab archiving with SQLite backend and sub-100ms full-text search",
   "minimum_chrome_version": "105",
-  "permissions": [
-    "nativeMessaging",
-    "tabs",
-    "storage"
-  ],
+  "permissions": ["nativeMessaging", "tabs", "storage"],
   "background": {
     "service_worker": "background.js"
   },

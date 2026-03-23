@@ -242,8 +242,22 @@ describe('checkInactiveTabs', () => {
 
     const now = Date.now();
     const tabs = [
-      { id: 1, url: 'https://private.com', title: 'Private', active: false, pinned: false, incognito: true },
-      { id: 2, url: 'https://normal.com', title: 'Normal', active: false, pinned: false, incognito: false },
+      {
+        id: 1,
+        url: 'https://private.com',
+        title: 'Private',
+        active: false,
+        pinned: false,
+        incognito: true,
+      },
+      {
+        id: 2,
+        url: 'https://normal.com',
+        title: 'Normal',
+        active: false,
+        pinned: false,
+        incognito: false,
+      },
     ];
     browserMock.tabs.query.mockResolvedValue(tabs);
 
@@ -342,8 +356,22 @@ describe('checkInactiveTabs', () => {
     const tabs = [
       { id: 1, url: 'https://a.com', title: 'A', active: false, pinned: false, incognito: false },
       { id: 2, url: 'https://b.com', title: 'B', active: false, pinned: false, incognito: false },
-      { id: 3, url: 'https://private-a.com', title: 'Private A', active: false, pinned: false, incognito: true },
-      { id: 4, url: 'https://private-b.com', title: 'Private B', active: false, pinned: false, incognito: true },
+      {
+        id: 3,
+        url: 'https://private-a.com',
+        title: 'Private A',
+        active: false,
+        pinned: false,
+        incognito: true,
+      },
+      {
+        id: 4,
+        url: 'https://private-b.com',
+        title: 'Private B',
+        active: false,
+        pinned: false,
+        incognito: true,
+      },
     ];
     browserMock.tabs.query.mockResolvedValue(tabs);
 
@@ -472,7 +500,13 @@ describe('archiveTab', () => {
 
   it('archives a valid tab and removes it', async () => {
     browserMock.tabs.query.mockResolvedValue([
-      { id: 5, url: 'https://example.com', title: 'Example', favIconUrl: 'https://example.com/icon.png', active: true },
+      {
+        id: 5,
+        url: 'https://example.com',
+        title: 'Example',
+        favIconUrl: 'https://example.com/icon.png',
+        active: true,
+      },
     ]);
 
     const messages: any[] = [];
@@ -498,7 +532,13 @@ describe('archiveTab', () => {
 
   it('skips incognito tabs during manual archive', async () => {
     browserMock.tabs.query.mockResolvedValue([
-      { id: 5, url: 'https://private.example.com', title: 'Private', active: true, incognito: true },
+      {
+        id: 5,
+        url: 'https://private.example.com',
+        title: 'Private',
+        active: true,
+        incognito: true,
+      },
     ]);
 
     const handler = vi.fn();
@@ -512,9 +552,7 @@ describe('archiveTab', () => {
   });
 
   it('uses url as title fallback when title is missing', async () => {
-    browserMock.tabs.query.mockResolvedValue([
-      { id: 1, url: 'https://notitle.com', active: true },
-    ]);
+    browserMock.tabs.query.mockResolvedValue([{ id: 1, url: 'https://notitle.com', active: true }]);
 
     const messages: any[] = [];
     setNativeMessageHandlerForTests(async (msg) => {
@@ -736,7 +774,7 @@ describe('handleMessage routing', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.settings!.archiveAfterMinutes).toBe(1);
+    expect(result.settings?.archiveAfterMinutes).toBe(1);
   });
 
   it('updateSettings: handles missing settings gracefully', async () => {
@@ -833,7 +871,9 @@ describe('startup listener', () => {
       await Promise.resolve();
     });
 
-    expect(browserMock.storage.local.set).not.toHaveBeenCalledWith({ badgeSessionArchivedCount: 0 });
+    expect(browserMock.storage.local.set).not.toHaveBeenCalledWith({
+      badgeSessionArchivedCount: 0,
+    });
     expect(browserMock.action.setBadgeText).toHaveBeenLastCalledWith({ text: '1' });
   });
 });
@@ -847,10 +887,7 @@ describe('storage change listener', () => {
 
     // Simulate storage change
     await act(async () => {
-      listener(
-        { paused: { newValue: true }, archiveAfterMinutes: { newValue: 30 } },
-        'sync',
-      );
+      listener({ paused: { newValue: true }, archiveAfterMinutes: { newValue: 30 } }, 'sync');
       await Promise.resolve();
     });
 
@@ -872,7 +909,7 @@ describe('storage change listener', () => {
     listener({ paused: { newValue: true } }, 'local');
 
     const result = await onMessageHandler({ action: 'getSettings' });
-    expect(result.settings!.paused).toBe(false);
+    expect(result.settings?.paused).toBe(false);
   });
 
   it('ignores changes to keys not in settings', async () => {

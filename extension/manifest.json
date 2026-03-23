@@ -9,11 +9,7 @@
       "strict_min_version": "109.0"
     }
   },
-  "permissions": [
-    "nativeMessaging",
-    "tabs",
-    "storage"
-  ],
+  "permissions": ["nativeMessaging", "tabs", "storage"],
   "background": {
     "scripts": ["background.js"]
   },

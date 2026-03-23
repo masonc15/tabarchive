@@ -12,7 +12,10 @@
     "dev": "webpack --mode development",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:all": "npm run test && npm run test:e2e"
+    "test:all": "npm run test && npm run test:e2e",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write ."
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -20,13 +23,14 @@
     "react-window": "^1.8.10"
   },
   "devDependencies": {
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@types/react-window": "^1.8.8",
+    "@biomejs/biome": "^2.4.8",
     "@playwright/test": "^1.42.1",
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^14.2.1",
     "@testing-library/user-event": "^14.5.2",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/react-window": "^1.8.8",
     "copy-webpack-plugin": "^12.0.2",
     "css-loader": "^6.10.0",
     "jsdom": "^24.0.0",

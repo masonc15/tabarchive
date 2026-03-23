@@ -29,7 +29,7 @@ declare namespace browser {
 
     const onUpdated: {
       addListener(
-        callback: (tabId: number, changeInfo: { status?: string }, tab: Tab) => void
+        callback: (tabId: number, changeInfo: { status?: string }, tab: Tab) => void,
       ): void;
     };
 
@@ -51,7 +51,7 @@ declare namespace browser {
 
     const onChanged: {
       addListener(
-        callback: (changes: Record<string, StorageChange>, areaName: string) => void
+        callback: (changes: Record<string, StorageChange>, areaName: string) => void,
       ): void;
     };
   }

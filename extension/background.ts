@@ -51,7 +51,9 @@ if (IS_TEST && mockState) {
   nativeMessageHandler = mockState.handleMessage;
 }
 
-export function setNativeMessageHandlerForTests(handler: (message: Record<string, any>) => Promise<any>) {
+export function setNativeMessageHandlerForTests(
+  handler: (message: Record<string, any>) => Promise<any>,
+) {
   nativeMessageHandler = handler;
 }
 
@@ -130,10 +132,7 @@ function sanitizeFaviconForArchive(value: unknown) {
 
 export function formatBadgeText(count: number): string {
   if (count > BADGE_MAX_DISPLAY_COUNT) {
-    const compactCount = Math.min(
-      BADGE_COMPACT_MAX_DISPLAY_COUNT,
-      Math.floor(count / 1000),
-    );
+    const compactCount = Math.min(BADGE_COMPACT_MAX_DISPLAY_COUNT, Math.floor(count / 1000));
     return `${compactCount}k+`;
   }
   return String(count);
@@ -180,7 +179,9 @@ async function adjustArchivedBadgeCount(delta: number) {
 
 async function loadSessionArchivedCount() {
   try {
-    const stored = await browser.storage.local.get({ [BADGE_SESSION_ARCHIVED_COUNT_STORAGE_KEY]: 0 });
+    const stored = await browser.storage.local.get({
+      [BADGE_SESSION_ARCHIVED_COUNT_STORAGE_KEY]: 0,
+    });
     archivedCount = normalizeArchivedCount(stored[BADGE_SESSION_ARCHIVED_COUNT_STORAGE_KEY]);
   } catch (e) {
     console.error('Failed to load session badge count:', e);
@@ -235,11 +236,14 @@ function connectNative() {
       port = null;
       pendingRequests.forEach(({ reject, timeoutId }) => {
         clearTimeout(timeoutId);
-        reject(new Error('Native host disconnected: ' + (error || 'unknown')));
+        reject(new Error(`Native host disconnected: ${error || 'unknown'}`));
       });
       pendingRequests.clear();
 
-      const delay = Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY_MS);
+      const delay = Math.min(
+        BASE_RECONNECT_DELAY_MS * 2 ** reconnectAttempts,
+        MAX_RECONNECT_DELAY_MS,
+      );
       reconnectAttempts += 1;
       setTimeout(() => connectNative(), delay);
     });
@@ -248,7 +252,10 @@ function connectNative() {
     return connectedPort;
   } catch (e) {
     console.error('Failed to connect to native host:', e);
-    const delay = Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY_MS);
+    const delay = Math.min(
+      BASE_RECONNECT_DELAY_MS * 2 ** reconnectAttempts,
+      MAX_RECONNECT_DELAY_MS,
+    );
     reconnectAttempts += 1;
     setTimeout(() => connectNative(), delay);
     return null;
@@ -296,10 +303,7 @@ function sendNativeMessage(message: Record<string, any>) {
 }
 
 async function archiveTab(tab: browser.tabs.Tab) {
-  if (
-    !canArchiveUrl(tab.url) ||
-    isIncognitoTab(tab)
-  ) {
+  if (!canArchiveUrl(tab.url) || isIncognitoTab(tab)) {
     return;
   }
 
@@ -343,9 +347,7 @@ export async function checkInactiveTabs() {
     const tabs = (await browser.tabs.query({})) as BrowserTabWithIncognito[];
     const nonIncognitoTabs = tabs.filter((tab) => !isIncognitoTab(tab));
 
-    const activeTabIds = new Set(
-      nonIncognitoTabs.map((t) => t.id).filter(Boolean) as number[],
-    );
+    const activeTabIds = new Set(nonIncognitoTabs.map((t) => t.id).filter(Boolean) as number[]);
     for (const tabId of tabLastActive.keys()) {
       if (!activeTabIds.has(tabId)) {
         tabLastActive.delete(tabId);
@@ -380,7 +382,8 @@ export async function checkInactiveTabs() {
 }
 
 browser.tabs.onActivated.addListener(({ tabId }: { tabId: number }) => {
-  void browser.tabs.get(tabId)
+  void browser.tabs
+    .get(tabId)
     .then((tab: browser.tabs.Tab) => {
       if (isIncognitoTab(tab)) {
         tabLastActive.delete(tabId);
@@ -391,15 +394,17 @@ browser.tabs.onActivated.addListener(({ tabId }: { tabId: number }) => {
     .catch(() => {});
 });
 
-browser.tabs.onUpdated.addListener((tabId: number, changeInfo: { status?: string }, tab: browser.tabs.Tab) => {
-  if (changeInfo.status === 'complete') {
-    if (isIncognitoTab(tab)) {
-      tabLastActive.delete(tabId);
-      return;
+browser.tabs.onUpdated.addListener(
+  (tabId: number, changeInfo: { status?: string }, tab: browser.tabs.Tab) => {
+    if (changeInfo.status === 'complete') {
+      if (isIncognitoTab(tab)) {
+        tabLastActive.delete(tabId);
+        return;
+      }
+      tabLastActive.set(tabId, Date.now());
     }
-    tabLastActive.set(tabId, Date.now());
-  }
-});
+  },
+);
 
 browser.tabs.onRemoved.addListener((tabId: number) => {
   tabLastActive.delete(tabId);
@@ -500,7 +505,10 @@ async function handleMessage(message: Record<string, any>) {
       return { ok: true, settings };
 
     case 'archiveTab': {
-      const tabs = (await browser.tabs.query({ active: true, currentWindow: true })) as browser.tabs.Tab[];
+      const tabs = (await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      })) as browser.tabs.Tab[];
       if (tabs[0]) {
         await archiveTab(tabs[0]);
         return { ok: true };
@@ -535,20 +543,22 @@ async function init() {
   console.log('Tab Archive initialized');
 }
 
-browser.storage.onChanged.addListener((changes: Record<string, { newValue?: unknown }>, area: string) => {
-  if (area === 'sync') {
-    const updated: Partial<AppSettings> = {};
-    for (const key of Object.keys(changes)) {
-      if (key in settings) {
-        (updated as any)[key] = changes[key].newValue;
+browser.storage.onChanged.addListener(
+  (changes: Record<string, { newValue?: unknown }>, area: string) => {
+    if (area === 'sync') {
+      const updated: Partial<AppSettings> = {};
+      for (const key of Object.keys(changes)) {
+        if (key in settings) {
+          (updated as any)[key] = changes[key].newValue;
+        }
+      }
+      if (Object.keys(updated).length > 0) {
+        settings = normalizeSettings({ ...settings, ...updated });
+        void refreshBadgeAppearance();
       }
     }
-    if (Object.keys(updated).length > 0) {
-      settings = normalizeSettings({ ...settings, ...updated });
-      void refreshBadgeAppearance();
-    }
-  }
-});
+  },
+);
 
 if (!IS_TEST) {
   init();
@@ -596,8 +606,9 @@ function createMockState() {
       case 'search': {
         const query = String(message.query || '').toLowerCase();
         const filtered = query
-          ? listActive().filter((tab) =>
-              tab.title.toLowerCase().includes(query) || tab.url.toLowerCase().includes(query),
+          ? listActive().filter(
+              (tab) =>
+                tab.title.toLowerCase().includes(query) || tab.url.toLowerCase().includes(query),
             )
           : listActive();
         const offset = message.offset || 0;

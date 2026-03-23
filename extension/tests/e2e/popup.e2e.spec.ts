@@ -1,8 +1,8 @@
-import { test, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
-import path from 'path';
-import os from 'os';
-import fs from 'fs';
-import { spawnSync } from 'child_process';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { type BrowserContext, chromium, expect, type Page, test } from '@playwright/test';
 
 declare const chrome: any;
 
@@ -24,7 +24,10 @@ type Harness = {
   tempRoot: string;
 };
 
-async function launchExtensionContext(userDataDir: string, homeDir: string): Promise<{ context: BrowserContext; extensionId: string }> {
+async function launchExtensionContext(
+  userDataDir: string,
+  homeDir: string,
+): Promise<{ context: BrowserContext; extensionId: string }> {
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: 'chromium',
     headless: true,
@@ -32,10 +35,7 @@ async function launchExtensionContext(userDataDir: string, homeDir: string): Pro
       ...process.env,
       HOME: homeDir,
     },
-    args: [
-      `--disable-extensions-except=${extensionPath}`,
-      `--load-extension=${extensionPath}`,
-    ],
+    args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
   });
 
   let serviceWorker = context.serviceWorkers()[0];
@@ -120,7 +120,9 @@ async function createHarness(): Promise<Harness> {
   const secondLaunch = await launchExtensionContext(userDataDir, homeDir);
   if (secondLaunch.extensionId !== extensionId) {
     await secondLaunch.context.close();
-    throw new Error(`Extension ID changed across launches: ${extensionId} -> ${secondLaunch.extensionId}`);
+    throw new Error(
+      `Extension ID changed across launches: ${extensionId} -> ${secondLaunch.extensionId}`,
+    );
   }
 
   return {
@@ -136,7 +138,10 @@ async function cleanupHarness(harness: Harness) {
   fs.rmSync(harness.tempRoot, { recursive: true, force: true });
 }
 
-async function sendRuntimeMessage<T = any>(page: Page, message: Record<string, unknown>): Promise<T | null> {
+async function sendRuntimeMessage<T = any>(
+  page: Page,
+  message: Record<string, unknown>,
+): Promise<T | null> {
   return page.evaluate((payload) => {
     return new Promise((resolve) => {
       try {
@@ -158,10 +163,15 @@ async function sendRuntimeMessage<T = any>(page: Page, message: Record<string, u
 async function openPopupPage(context: BrowserContext, extensionId: string): Promise<Page> {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/popup/popup.html`);
-  await expect.poll(async () => {
-    const response = await sendRuntimeMessage<Record<string, any>>(page, { action: 'stats' });
-    return response?.ok === true;
-  }, { timeout: 15_000 }).toBe(true);
+  await expect
+    .poll(
+      async () => {
+        const response = await sendRuntimeMessage<Record<string, any>>(page, { action: 'stats' });
+        return response?.ok === true;
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true);
   return page;
 }
 
@@ -212,7 +222,9 @@ test.describe('Tab Archive extension (real native host)', () => {
       await page.getByLabel('Archive after').selectOption('1440');
       await expect(page.getByRole('switch', { name: 'Pause archiving' })).toHaveCount(0);
 
-      const settingsResponse = await sendRuntimeMessage<Record<string, any>>(page, { action: 'getSettings' });
+      const settingsResponse = await sendRuntimeMessage<Record<string, any>>(page, {
+        action: 'getSettings',
+      });
       expect(settingsResponse?.ok).toBe(true);
       expect(settingsResponse?.settings?.archiveAfterMinutes).toBe(1440);
       expect(settingsResponse?.settings?.paused).toBe(true);
@@ -235,7 +247,9 @@ test.describe('Tab Archive extension (real native host)', () => {
       await page.getByRole('button', { name: 'Clear archived tabs' }).click();
       await expect(page.getByText(/Deleted .* archived tabs\./)).toBeVisible();
 
-      const statsResponse = await sendRuntimeMessage<Record<string, any>>(page, { action: 'stats' });
+      const statsResponse = await sendRuntimeMessage<Record<string, any>>(page, {
+        action: 'stats',
+      });
       expect(statsResponse?.ok).toBe(true);
       expect(statsResponse?.totalArchived).toBe(0);
     } finally {
