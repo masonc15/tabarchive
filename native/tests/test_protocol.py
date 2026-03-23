@@ -1,6 +1,6 @@
+import importlib.util
 import io
 import struct
-import importlib.util
 from pathlib import Path
 
 import pytest

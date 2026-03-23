@@ -36,7 +36,15 @@ def conn():
     db.close()
 
 
-def _insert_tab(conn, url="https://example.com", title="Example", closed_at=None, restored_at=None, favicon_url=None, metadata=None):
+def _insert_tab(
+    conn,
+    url="https://example.com",
+    title="Example",
+    closed_at=None,
+    restored_at=None,
+    favicon_url=None,
+    metadata=None,
+):
     """Helper to insert a tab directly."""
     closed_at = closed_at or int(time.time() * 1000)
     conn.execute(
@@ -748,7 +756,19 @@ class TestHandlePing:
 
 class TestDispatch:
     def test_all_actions_registered(self):
-        expected = {"archive", "search", "recent", "restore", "delete", "clear", "stats", "export", "import", "vacuum", "ping"}
+        expected = {
+            "archive",
+            "search",
+            "recent",
+            "restore",
+            "delete",
+            "clear",
+            "stats",
+            "export",
+            "import",
+            "vacuum",
+            "ping",
+        }
         assert set(module.HANDLERS.keys()) == expected
 
     def test_unknown_action_returns_error(self, conn):
