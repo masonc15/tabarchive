@@ -1,14 +1,14 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import browser from 'webextension-polyfill';
-import { SearchBar } from './components/SearchBar';
-import { TabList } from './components/TabList';
-import { Settings } from './components/Settings';
-import { useNativeMessaging } from './hooks/useNativeMessaging';
-import { ArchivedTab, AppSettings } from './types';
 import { getRestoreBlockReason } from '../runtime';
+import { SearchBar } from './components/SearchBar';
+import { Settings } from './components/Settings';
+import { TabList } from './components/TabList';
+import { useNativeMessaging } from './hooks/useNativeMessaging';
+import type { AppSettings, ArchivedTab } from './types';
 
-export type { ArchivedTab, AppSettings };
+export type { AppSettings, ArchivedTab };
 
 const PAGE_SIZE = 100;
 const DEFAULT_SETTINGS: AppSettings = {
@@ -26,13 +26,7 @@ type AppProps = {
 function PlaybackToggleIcon({ paused }: { paused: boolean }) {
   if (paused) {
     return (
-      <svg
-        width="15"
-        height="15"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        aria-hidden="true"
-      >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
         <path d="M8 6.5v11l9-5.5-9-5.5Z" />
       </svg>
     );
@@ -70,7 +64,8 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const { sendMessage, search, restore, getRecent, getSettings, updateSettings, connected, error } = useNativeMessagingHook();
+  const { sendMessage, search, restore, getRecent, getSettings, updateSettings, connected, error } =
+    useNativeMessagingHook();
 
   React.useEffect(() => {
     void Promise.resolve(browser.runtime.sendMessage({ action: 'popupOpened' })).catch(() => {});
@@ -79,26 +74,27 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
     };
   }, []);
 
-  const handleSearch = useCallback(async (query: string) => {
-    setActionError(null);
-    setSearchQuery(query);
-    searchQueryRef.current = query;
-    setLoading(true);
-    offsetRef.current = 0;
+  const handleSearch = useCallback(
+    async (query: string) => {
+      setActionError(null);
+      setSearchQuery(query);
+      searchQueryRef.current = query;
+      setLoading(true);
+      offsetRef.current = 0;
 
-    try {
-      const result = query.trim()
-        ? await search(query, PAGE_SIZE)
-        : await getRecent(PAGE_SIZE);
-      setTabs(result.tabs);
-      setHasMore(result.hasMore);
-      offsetRef.current = result.tabs.length;
-    } catch (err) {
-      console.error('Search failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [search, getRecent]);
+      try {
+        const result = query.trim() ? await search(query, PAGE_SIZE) : await getRecent(PAGE_SIZE);
+        setTabs(result.tabs);
+        setHasMore(result.hasMore);
+        offsetRef.current = result.tabs.length;
+      } catch (err) {
+        console.error('Search failed:', err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [search, getRecent],
+  );
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current) return;
@@ -110,7 +106,7 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
       const result = query.trim()
         ? await search(query, PAGE_SIZE, offsetRef.current)
         : await getRecent(PAGE_SIZE, offsetRef.current);
-      setTabs(prev => [...prev, ...result.tabs]);
+      setTabs((prev) => [...prev, ...result.tabs]);
       setHasMore(result.hasMore);
       offsetRef.current += result.tabs.length;
     } catch (err) {
@@ -121,44 +117,50 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
     }
   }, [search, getRecent]);
 
-  const handleRestore = useCallback(async (tab: ArchivedTab): Promise<boolean> => {
-    setActionError(null);
+  const handleRestore = useCallback(
+    async (tab: ArchivedTab): Promise<boolean> => {
+      setActionError(null);
 
-    const restoreBlockReason = getRestoreBlockReason(tab.url);
-    if (restoreBlockReason) {
-      setActionError(`Restore failed: ${restoreBlockReason}`);
-      return false;
-    }
-
-    try {
-      await browser.tabs.create({ url: tab.url });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to reopen tab';
-      console.error('Tab creation failed:', err);
-      setActionError(`Restore failed: ${message}`);
-      return false;
-    }
-
-    try {
-      const ok = await restore(tab.id);
-      if (!ok) {
-        setActionError('Restore failed: The archive entry could not be updated.');
+      const restoreBlockReason = getRestoreBlockReason(tab.url);
+      if (restoreBlockReason) {
+        setActionError(`Restore failed: ${restoreBlockReason}`);
         return false;
       }
-      setTabs(prev => prev.filter(t => t.id !== tab.id));
-      return true;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      console.error('Restore failed:', err);
-      setActionError(`Restore failed: ${message}`);
-      return false;
-    }
-  }, [restore]);
 
-  const handleSettingsChange = useCallback(async (newSettings: AppSettings) => {
-    setSettings(newSettings);
-    await updateSettings(newSettings);
-  }, [updateSettings]);
+      try {
+        await browser.tabs.create({ url: tab.url });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to reopen tab';
+        console.error('Tab creation failed:', err);
+        setActionError(`Restore failed: ${message}`);
+        return false;
+      }
+
+      try {
+        const ok = await restore(tab.id);
+        if (!ok) {
+          setActionError('Restore failed: The archive entry could not be updated.');
+          return false;
+        }
+        setTabs((prev) => prev.filter((t) => t.id !== tab.id));
+        return true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        console.error('Restore failed:', err);
+        setActionError(`Restore failed: ${message}`);
+        return false;
+      }
+    },
+    [restore],
+  );
+
+  const handleSettingsChange = useCallback(
+    async (newSettings: AppSettings) => {
+      setSettings(newSettings);
+      await updateSettings(newSettings);
+    },
+    [updateSettings],
+  );
 
   React.useEffect(() => {
     getSettings()
@@ -168,11 +170,13 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
 
   React.useEffect(() => {
     if (connected) {
-      getRecent(PAGE_SIZE).then(result => {
-        setTabs(result.tabs);
-        setHasMore(result.hasMore);
-        offsetRef.current = result.tabs.length;
-      }).catch(err => console.error('Failed to load tabs:', err));
+      getRecent(PAGE_SIZE)
+        .then((result) => {
+          setTabs(result.tabs);
+          setHasMore(result.hasMore);
+          offsetRef.current = result.tabs.length;
+        })
+        .catch((err) => console.error('Failed to load tabs:', err));
     }
   }, [connected, getRecent]);
 
@@ -208,6 +212,7 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
         </div>
         <nav style={styles.nav}>
           <button
+            type="button"
             style={{
               ...styles.navButton,
               ...(view === 'search' ? styles.navButtonActive : {}),
@@ -217,6 +222,7 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
             Search
           </button>
           <button
+            type="button"
             style={{
               ...styles.navButton,
               ...(view === 'settings' ? styles.navButtonActive : {}),
@@ -228,25 +234,15 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
         </nav>
       </header>
 
-      {(actionError || error) && (
-        <div style={styles.error}>
-          {actionError || error}
-        </div>
-      )}
+      {(actionError || error) && <div style={styles.error}>{actionError || error}</div>}
 
       {!connected && !(actionError || error) && (
-        <div style={styles.connecting}>
-          Connecting to native host...
-        </div>
+        <div style={styles.connecting}>Connecting to native host...</div>
       )}
 
       {view === 'search' && (
         <>
-          <SearchBar
-            value={searchQuery}
-            onChange={handleSearch}
-            disabled={!connected}
-          />
+          <SearchBar value={searchQuery} onChange={handleSearch} disabled={!connected} />
           <TabList
             tabs={tabs}
             loading={loading}
@@ -259,11 +255,7 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
       )}
 
       {view === 'settings' && (
-        <Settings
-          settings={settings}
-          onChange={handleSettingsChange}
-          sendMessage={sendMessage}
-        />
+        <Settings settings={settings} onChange={handleSettingsChange} sendMessage={sendMessage} />
       )}
     </div>
   );

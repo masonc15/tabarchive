@@ -36,10 +36,21 @@ function createMocks(overrides: Record<string, unknown> = {}) {
 }
 
 vi.mock('../popup/components/TabList', () => ({
-  TabList: ({ tabs, loading, onRestore }: { tabs: any[]; loading: boolean; onRestore: (t: any) => Promise<boolean>; loadMore: () => void; hasMore: boolean; loadingMore: boolean }) => (
+  TabList: ({
+    tabs,
+    loading,
+    onRestore,
+  }: {
+    tabs: any[];
+    loading: boolean;
+    onRestore: (t: any) => Promise<boolean>;
+    loadMore: () => void;
+    hasMore: boolean;
+    loadingMore: boolean;
+  }) => (
     <div data-testid="tab-list" data-loading={loading}>
       {tabs.map((t) => (
-        <button key={t.id} onClick={() => onRestore(t)}>
+        <button type="button" key={t.id} onClick={() => onRestore(t)}>
           {t.title}
         </button>
       ))}
@@ -48,7 +59,15 @@ vi.mock('../popup/components/TabList', () => ({
 }));
 
 vi.mock('../popup/components/SearchBar', () => ({
-  SearchBar: ({ value, onChange, disabled }: { value: string; onChange: (q: string) => void; disabled: boolean }) => (
+  SearchBar: ({
+    value,
+    onChange,
+    disabled,
+  }: {
+    value: string;
+    onChange: (q: string) => void;
+    disabled: boolean;
+  }) => (
     <input
       data-testid="search-bar"
       value={value}
@@ -111,7 +130,9 @@ describe('Popup App', () => {
     });
     expect(screen.getByText('Example')).toBeInTheDocument();
     expect(browserMock.tabs.create).toHaveBeenCalledWith({ url: 'https://example.com/page' });
-    expect(screen.getByText('Restore failed: The archive entry could not be updated.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Restore failed: The archive entry could not be updated.'),
+    ).toBeInTheDocument();
   });
 
   it('does not call restore when tab creation fails', async () => {
@@ -176,7 +197,9 @@ describe('Popup App', () => {
     expect(browserMock.tabs.create).not.toHaveBeenCalled();
     expect(mocks.restore).not.toHaveBeenCalled();
     expect(
-      screen.getByText('Restore failed: Firefox cannot reopen local file tabs from an extension. Open the file directly from disk.')
+      screen.getByText(
+        'Restore failed: Firefox cannot reopen local file tabs from an extension. Open the file directly from disk.',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -219,7 +242,10 @@ describe('Popup App', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole('button', { name: 'Resume archiving' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Resume archiving' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   it('toggles pause state from the header control', async () => {
@@ -245,7 +271,10 @@ describe('Popup App', () => {
       });
     });
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Resume archiving' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'Resume archiving' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
     });
   });
 
@@ -333,9 +362,10 @@ describe('Popup App', () => {
 
   it('triggers search when search bar value changes', async () => {
     const { mocks, hook } = createMocks({
-      search: vi.fn().mockResolvedValue({ tabs: [
-        { id: 2, url: 'https://found.com', title: 'Found', closedAt: Date.now() },
-      ], hasMore: false }),
+      search: vi.fn().mockResolvedValue({
+        tabs: [{ id: 2, url: 'https://found.com', title: 'Found', closedAt: Date.now() }],
+        hasMore: false,
+      }),
     });
 
     await act(async () => {

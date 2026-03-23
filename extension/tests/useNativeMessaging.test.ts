@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { useNativeMessaging } from '../popup/hooks/useNativeMessaging';
 
 function getBrowserMock() {
@@ -25,7 +25,7 @@ describe('useNativeMessaging', () => {
 
     expect(result.current.connected).toBe(false);
     expect(result.current.error).toBe(
-      'Native host not installed for this Firefox add-on. Run ./native/install.sh --browser firefox, then reload the extension.'
+      'Native host not installed for this Firefox add-on. Run ./native/install.sh --browser firefox, then reload the extension.',
     );
   });
 
@@ -104,7 +104,7 @@ describe('useNativeMessaging', () => {
       browser_specific_settings: { gecko: { id: 'tabarchive@masonc15.github.io' } },
     });
     browserMock.runtime.sendMessage.mockRejectedValue(
-      new Error('Native host disconnected: No such native application tabarchive')
+      new Error('Native host disconnected: No such native application tabarchive'),
     );
 
     const { result } = renderHook(() => useNativeMessaging());
@@ -115,15 +115,13 @@ describe('useNativeMessaging', () => {
 
     expect(result.current.connected).toBe(false);
     expect(result.current.error).toBe(
-      'Native host not installed for this Firefox add-on. Run ./native/install.sh --browser firefox, then reload the extension.'
+      'Native host not installed for this Firefox add-on. Run ./native/install.sh --browser firefox, then reload the extension.',
     );
   });
 
   it('search returns tabs from response', async () => {
     const browserMock = getBrowserMock();
-    const mockTabs = [
-      { id: 1, url: 'https://example.com', title: 'Example', closedAt: 123 },
-    ];
+    const mockTabs = [{ id: 1, url: 'https://example.com', title: 'Example', closedAt: 123 }];
     browserMock.runtime.sendMessage.mockResolvedValue({ ok: true, tabs: mockTabs });
 
     const { result } = renderHook(() => useNativeMessaging());
@@ -135,7 +133,7 @@ describe('useNativeMessaging', () => {
 
     expect(tabs).toEqual({ tabs: mockTabs, hasMore: false });
     expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'search', query: 'example', limit: 100, offset: 0 })
+      expect.objectContaining({ action: 'search', query: 'example', limit: 100, offset: 0 }),
     );
   });
 
@@ -166,7 +164,7 @@ describe('useNativeMessaging', () => {
 
     expect(ok).toBe(true);
     expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'restore', id: 42 })
+      expect.objectContaining({ action: 'restore', id: 42 }),
     );
   });
 
@@ -197,7 +195,7 @@ describe('useNativeMessaging', () => {
 
     expect(ok).toBe(true);
     expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'delete', id: 7 })
+      expect.objectContaining({ action: 'delete', id: 7 }),
     );
   });
 
@@ -215,7 +213,7 @@ describe('useNativeMessaging', () => {
 
     expect(tabs).toEqual({ tabs: mockTabs, hasMore: false });
     expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'recent', limit: 100, offset: 0 })
+      expect.objectContaining({ action: 'recent', limit: 100, offset: 0 }),
     );
   });
 
@@ -230,7 +228,7 @@ describe('useNativeMessaging', () => {
     });
 
     expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'recent', limit: 10, offset: 5 })
+      expect.objectContaining({ action: 'recent', limit: 10, offset: 5 }),
     );
   });
 
@@ -271,7 +269,10 @@ describe('useNativeMessaging', () => {
     const browserMock = getBrowserMock();
     browserMock.runtime.sendMessage
       .mockResolvedValueOnce({ ok: false, error: 'Host not found' })
-      .mockResolvedValueOnce({ ok: true, settings: { archiveAfterMinutes: 720, paused: true, minTabs: 20 } });
+      .mockResolvedValueOnce({
+        ok: true,
+        settings: { archiveAfterMinutes: 720, paused: true, minTabs: 20 },
+      });
 
     const { result } = renderHook(() => useNativeMessaging());
 
@@ -302,7 +303,10 @@ describe('useNativeMessaging', () => {
 
     expect(settings).toEqual(updatedSettings);
     expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'updateSettings', settings: { archiveAfterMinutes: 1440 } })
+      expect.objectContaining({
+        action: 'updateSettings',
+        settings: { archiveAfterMinutes: 1440 },
+      }),
     );
   });
 
@@ -337,7 +341,7 @@ describe('useNativeMessaging', () => {
 
     expect(ok).toBe(true);
     expect(browserMock.runtime.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'archiveTab' })
+      expect.objectContaining({ action: 'archiveTab' }),
     );
   });
 
