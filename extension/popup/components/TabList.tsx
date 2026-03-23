@@ -1,7 +1,11 @@
 import React, { memo, useCallback } from 'react';
-import { FixedSizeList as List, ListChildComponentProps, ListOnItemsRenderedProps } from 'react-window';
-import { TabItem } from './TabItem';
+import {
+  FixedSizeList as List,
+  type ListChildComponentProps,
+  type ListOnItemsRenderedProps,
+} from 'react-window';
 import type { ArchivedTab } from '../types';
+import { TabItem } from './TabItem';
 
 interface TabListProps {
   tabs: ArchivedTab[];
@@ -39,15 +43,25 @@ const Row = memo(({ index, style, data }: ListChildComponentProps<ItemData>) => 
   );
 });
 
-export function TabList({ tabs, loading, onRestore, loadMore, hasMore, loadingMore }: TabListProps) {
+export function TabList({
+  tabs,
+  loading,
+  onRestore,
+  loadMore,
+  hasMore,
+  loadingMore,
+}: TabListProps) {
   const itemData = React.useMemo(() => ({ tabs, onRestore }), [tabs, onRestore]);
   const itemCount = tabs.length + (hasMore ? 1 : 0);
 
-  const handleItemsRendered = useCallback(({ visibleStopIndex }: ListOnItemsRenderedProps) => {
-    if (hasMore && !loadingMore && visibleStopIndex >= tabs.length - LOAD_MORE_THRESHOLD) {
-      loadMore();
-    }
-  }, [hasMore, loadingMore, tabs.length, loadMore]);
+  const handleItemsRendered = useCallback(
+    ({ visibleStopIndex }: ListOnItemsRenderedProps) => {
+      if (hasMore && !loadingMore && visibleStopIndex >= tabs.length - LOAD_MORE_THRESHOLD) {
+        loadMore();
+      }
+    },
+    [hasMore, loadingMore, tabs.length, loadMore],
+  );
 
   if (loading) {
     return (
@@ -73,6 +87,7 @@ export function TabList({ tabs, loading, onRestore, loadMore, hasMore, loadingMo
             strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
+            aria-hidden="true"
             style={styles.emptyIcon}
           >
             <path d="M3 3h18v18H3z" />
@@ -96,7 +111,9 @@ export function TabList({ tabs, loading, onRestore, loadMore, hasMore, loadingMo
         itemCount={itemCount}
         itemSize={ITEM_HEIGHT}
         itemData={itemData}
-        itemKey={(index, data) => (index >= data.tabs.length ? 'loading-more' : data.tabs[index].id)}
+        itemKey={(index, data) =>
+          index >= data.tabs.length ? 'loading-more' : data.tabs[index].id
+        }
         onItemsRendered={handleItemsRendered}
       >
         {Row}

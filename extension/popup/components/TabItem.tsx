@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import type React from 'react';
+import { useEffect, useState } from 'react';
 import type { ArchivedTab } from '../types';
 
 interface TabItemProps {
@@ -40,7 +41,7 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
 
   useEffect(() => {
     setRestoring(false);
-  }, [tab.id]);
+  }, []);
 
   const handleRestore = async () => {
     setRestoring(true);
@@ -66,6 +67,7 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
   };
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: interactive card row, converting to button disrupts layout
     <div
       style={{
         ...styles.container,
@@ -91,6 +93,7 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
           />
         ) : (
           <svg
+            aria-hidden="true"
             width="16"
             height="16"
             viewBox="0 0 24 24"
@@ -108,9 +111,7 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
       </div>
 
       <div style={styles.content}>
-        <div style={styles.title}>
-          {tab.title || 'Untitled'}
-        </div>
+        <div style={styles.title}>{tab.title || 'Untitled'}</div>
         <div style={styles.meta}>
           <span style={styles.domain}>{getDomain(tab.url)}</span>
           <span style={styles.dot}>·</span>
@@ -119,6 +120,7 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
       </div>
 
       <button
+        type="button"
         style={{
           ...styles.restoreButton,
           opacity: hovering || restoring ? 1 : 0,
@@ -134,6 +136,7 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
           <div style={styles.miniSpinner} />
         ) : (
           <svg
+            aria-hidden="true"
             width="16"
             height="16"
             viewBox="0 0 24 24"

@@ -22,9 +22,7 @@ describe('TabList', () => {
   it('shows empty state when no tabs and not loading', () => {
     render(<TabList tabs={[]} loading={false} onRestore={vi.fn()} {...paginationProps} />);
     expect(screen.getByText('No archived tabs found')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Inactive tabs will be automatically archived/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Inactive tabs will be automatically archived/)).toBeInTheDocument();
   });
 
   it('renders virtualized list when tabs are provided', () => {
@@ -56,7 +54,7 @@ describe('TabList', () => {
     const tabs = makeTabs(2);
     const onRestore = vi.fn().mockResolvedValue(true);
     const { rerender } = render(
-      <TabList tabs={tabs} loading={false} onRestore={onRestore} {...paginationProps} />
+      <TabList tabs={tabs} loading={false} onRestore={onRestore} {...paginationProps} />,
     );
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Restore tab' })[0]);
@@ -67,7 +65,7 @@ describe('TabList', () => {
 
     await act(async () => {
       rerender(
-        <TabList tabs={tabs.slice(1)} loading={false} onRestore={onRestore} {...paginationProps} />
+        <TabList tabs={tabs.slice(1)} loading={false} onRestore={onRestore} {...paginationProps} />,
       );
     });
 

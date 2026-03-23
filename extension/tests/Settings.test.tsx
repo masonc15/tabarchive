@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Settings } from '../popup/components/Settings';
 import type { AppSettings } from '../popup/types';
@@ -9,11 +9,13 @@ const defaultSettings: AppSettings = {
   minTabs: 20,
 };
 
-function renderSettings(overrides: {
-  settings?: AppSettings;
-  onChange?: (s: AppSettings) => void;
-  sendMessage?: (msg: Record<string, unknown>) => Promise<any>;
-} = {}) {
+function renderSettings(
+  overrides: {
+    settings?: AppSettings;
+    onChange?: (s: AppSettings) => void;
+    sendMessage?: (msg: Record<string, unknown>) => Promise<any>;
+  } = {},
+) {
   const onChange = overrides.onChange ?? vi.fn();
   const sendMessage = overrides.sendMessage ?? vi.fn().mockResolvedValue({ ok: false });
   const settings = overrides.settings ?? defaultSettings;
@@ -21,9 +23,7 @@ function renderSettings(overrides: {
   return {
     onChange,
     sendMessage,
-    ...render(
-      <Settings settings={settings} onChange={onChange} sendMessage={sendMessage} />
-    ),
+    ...render(<Settings settings={settings} onChange={onChange} sendMessage={sendMessage} />),
   };
 }
 
@@ -172,7 +172,8 @@ describe('Settings', () => {
 
   it('exports archived tabs as JSON', async () => {
     const user = userEvent.setup();
-    const sendMessage = vi.fn()
+    const sendMessage = vi
+      .fn()
       .mockResolvedValueOnce({
         ok: true,
         totalArchived: 2,
@@ -219,7 +220,8 @@ describe('Settings', () => {
 
   it('clears archived tabs after confirmation', async () => {
     const user = userEvent.setup();
-    const sendMessage = vi.fn()
+    const sendMessage = vi
+      .fn()
       .mockResolvedValueOnce({
         ok: true,
         totalArchived: 4,

@@ -160,7 +160,7 @@ describe('TabItem', () => {
     const onRestore = vi.fn().mockReturnValue(
       new Promise<boolean>((resolve) => {
         resolveRestore = resolve;
-      })
+      }),
     );
 
     render(<TabItem tab={tab} onRestore={onRestore} />);
@@ -173,7 +173,7 @@ describe('TabItem', () => {
     });
 
     await act(async () => {
-      resolveRestore!(true);
+      resolveRestore?.(true);
     });
   });
 });

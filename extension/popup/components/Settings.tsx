@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import type React from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { AppSettings } from '../types';
 
 interface SettingsProps {
@@ -217,7 +218,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
             style={styles.select}
             aria-label="Archive after"
           >
-            {archiveOptions.map(option => (
+            {archiveOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -228,9 +229,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
         <div style={styles.settingRow}>
           <div style={styles.settingInfo}>
             <div style={styles.settingLabel}>Minimum tabs</div>
-            <div style={styles.settingDescription}>
-              Keep at least this many tabs open
-            </div>
+            <div style={styles.settingDescription}>Keep at least this many tabs open</div>
           </div>
           <select
             value={settings.minTabs}
@@ -238,7 +237,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
             style={styles.select}
             aria-label="Minimum tabs"
           >
-            {minTabsOptions.map(option => (
+            {minTabsOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -271,6 +270,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
         <div style={styles.statsTitle}>Data</div>
         <div style={styles.actionsGrid}>
           <button
+            type="button"
             style={styles.actionButton}
             onClick={handleExport}
             disabled={exporting || clearing}
@@ -279,6 +279,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
             {exporting ? 'Exporting...' : 'Export JSON'}
           </button>
           <button
+            type="button"
             style={{ ...styles.actionButton, ...styles.actionButtonDanger }}
             onClick={handleClearAll}
             disabled={exporting || clearing}
@@ -287,6 +288,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
             {clearing ? 'Clearing...' : 'Clear Archived Tabs'}
           </button>
           <button
+            type="button"
             style={styles.actionButton}
             onClick={handleResetSettings}
             disabled={exporting || clearing}
@@ -300,8 +302,8 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
 
       <div style={styles.footer}>
         <p style={styles.footerText}>
-          Archived tabs stay in local storage managed by the native host, even
-          if you clear browser data.
+          Archived tabs stay in local storage managed by the native host, even if you clear browser
+          data.
         </p>
       </div>
     </div>

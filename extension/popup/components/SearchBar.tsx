@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import type React from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface SearchBarProps {
   value: string;
@@ -52,8 +53,8 @@ export function SearchBar({ value, onChange, disabled }: SearchBarProps) {
     <div style={styles.container}>
       <div style={styles.inputWrapper}>
         <svg
+          aria-hidden="true"
           style={styles.searchIcon}
-          width="16"
           height="16"
           viewBox="0 0 24 24"
           fill="none"
@@ -76,13 +77,14 @@ export function SearchBar({ value, onChange, disabled }: SearchBarProps) {
         />
         {inputValue && (
           <button
+            type="button"
             onClick={handleClear}
             style={styles.clearButton}
             aria-label="Clear search"
           >
             <svg
+              aria-hidden="true"
               width="14"
-              height="14"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
