@@ -14,7 +14,7 @@ const tab: ArchivedTab = {
 describe('TabItem', () => {
   it('clears restoring state when restore fails', async () => {
     const user = userEvent.setup();
-    const onRestore = vi.fn().mockResolvedValue(false);
+    const onRestore = vi.fn().mockRejectedValue(new Error('restore failed'));
 
     render(<TabItem tab={tab} onRestore={onRestore} />);
 
@@ -28,6 +28,11 @@ describe('TabItem', () => {
     await waitFor(() => {
       expect(restoreButton).not.toBeDisabled();
     });
+  });
+
+  it('shows the restore button without requiring hover state', () => {
+    render(<TabItem tab={tab} onRestore={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Restore tab' })).toBeVisible();
   });
 
   it('renders tab title', () => {
@@ -105,7 +110,7 @@ describe('TabItem', () => {
   });
 
   it('triggers restore on Enter key', async () => {
-    const onRestore = vi.fn().mockResolvedValue(true);
+    const onRestore = vi.fn().mockResolvedValue(undefined);
     render(<TabItem tab={tab} onRestore={onRestore} />);
 
     const item = screen.getByRole('button', { name: /Restore tab: Example/ });
@@ -117,7 +122,7 @@ describe('TabItem', () => {
   });
 
   it('triggers restore on Space key', async () => {
-    const onRestore = vi.fn().mockResolvedValue(true);
+    const onRestore = vi.fn().mockResolvedValue(undefined);
     render(<TabItem tab={tab} onRestore={onRestore} />);
 
     const item = screen.getByRole('button', { name: /Restore tab: Example/ });
@@ -156,9 +161,9 @@ describe('TabItem', () => {
   });
 
   it('disables restore button while restoring', async () => {
-    let resolveRestore: (value: boolean) => void;
+    let resolveRestore: () => void;
     const onRestore = vi.fn().mockReturnValue(
-      new Promise<boolean>((resolve) => {
+      new Promise<void>((resolve) => {
         resolveRestore = resolve;
       }),
     );
@@ -173,7 +178,7 @@ describe('TabItem', () => {
     });
 
     await act(async () => {
-      resolveRestore?.(true);
+      resolveRestore?.();
     });
   });
 });

@@ -10,7 +10,7 @@ import { TabItem } from './TabItem';
 interface TabListProps {
   tabs: ArchivedTab[];
   loading: boolean;
-  onRestore: (tab: ArchivedTab) => Promise<boolean> | boolean;
+  onRestore: (tab: ArchivedTab) => Promise<void> | void;
   loadMore: () => void;
   hasMore: boolean;
   loadingMore: boolean;
@@ -18,7 +18,7 @@ interface TabListProps {
 
 interface ItemData {
   tabs: ArchivedTab[];
-  onRestore: (tab: ArchivedTab) => Promise<boolean> | boolean;
+  onRestore: (tab: ArchivedTab) => Promise<void> | void;
 }
 
 const ITEM_HEIGHT = 54;

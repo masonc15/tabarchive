@@ -52,7 +52,7 @@ describe('TabList', () => {
 
   it('does not leak restoring state to the next tab after removing a restored row', async () => {
     const tabs = makeTabs(2);
-    const onRestore = vi.fn().mockResolvedValue(true);
+    const onRestore = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
       <TabList tabs={tabs} loading={false} onRestore={onRestore} {...paginationProps} />,
     );

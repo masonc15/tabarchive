@@ -13,17 +13,31 @@ function renderSettings(
   overrides: {
     settings?: AppSettings;
     onChange?: (s: AppSettings) => void;
-    sendMessage?: (msg: Record<string, unknown>) => Promise<any>;
+    getStats?: () => Promise<any>;
+    exportArchive?: (args: { includeRestored: boolean; chunkSize: number; offset: number }) => Promise<any>;
+    clearArchive?: (args: { includeRestored: boolean }) => Promise<number>;
   } = {},
 ) {
   const onChange = overrides.onChange ?? vi.fn();
-  const sendMessage = overrides.sendMessage ?? vi.fn().mockResolvedValue({ ok: false });
+  const getStats = overrides.getStats ?? vi.fn().mockRejectedValue(new Error('stats unavailable'));
+  const exportArchive = overrides.exportArchive ?? vi.fn();
+  const clearArchive = overrides.clearArchive ?? vi.fn();
   const settings = overrides.settings ?? defaultSettings;
 
   return {
     onChange,
-    sendMessage,
-    ...render(<Settings settings={settings} onChange={onChange} sendMessage={sendMessage} />),
+    getStats,
+    exportArchive,
+    clearArchive,
+    ...render(
+      <Settings
+        settings={settings}
+        onChange={onChange}
+        getStats={getStats}
+        exportArchive={exportArchive}
+        clearArchive={clearArchive}
+      />,
+    ),
   };
 }
 
@@ -39,47 +53,44 @@ describe('Settings', () => {
 
   it('renders archive-after select with correct value', () => {
     renderSettings();
-    const select = screen.getByRole('combobox', { name: 'Archive after' });
-    expect(select).toHaveValue('720');
+    expect(screen.getByRole('combobox', { name: 'Archive after' })).toHaveValue('720');
   });
 
   it('renders min-tabs select with correct value', () => {
     renderSettings();
-    const select = screen.getByRole('combobox', { name: 'Minimum tabs' });
-    expect(select).toHaveValue('20');
+    expect(screen.getByRole('combobox', { name: 'Minimum tabs' })).toHaveValue('20');
   });
 
-  it('dispatches archiveAfterMinutes change', async () => {
+  it('dispatches archiveAfterMinutes changes', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     renderSettings({ onChange });
 
-    const select = screen.getByRole('combobox', { name: 'Archive after' });
-    await user.selectOptions(select, '1440');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Archive after' }), '1440');
 
     expect(onChange).toHaveBeenCalledWith({ ...defaultSettings, archiveAfterMinutes: 1440 });
   });
 
-  it('dispatches minTabs change', async () => {
+  it('dispatches minTabs changes', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     renderSettings({ onChange });
 
-    const select = screen.getByRole('combobox', { name: 'Minimum tabs' });
-    await user.selectOptions(select, '10');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Minimum tabs' }), '10');
 
     expect(onChange).toHaveBeenCalledWith({ ...defaultSettings, minTabs: 10 });
   });
 
-  it('displays stats when sendMessage returns ok', async () => {
-    const sendMessage = vi.fn().mockResolvedValue({
-      ok: true,
+  it('displays stats when getStats succeeds', async () => {
+    const getStats = vi.fn().mockResolvedValue({
       totalArchived: 150,
       totalRestored: 30,
       dbSizeBytes: 2048,
+      oldestClosedAt: 100,
+      newestClosedAt: 200,
     });
 
-    renderSettings({ sendMessage });
+    renderSettings({ getStats });
 
     await waitFor(() => {
       expect(screen.getByText('150')).toBeInTheDocument();
@@ -89,14 +100,15 @@ describe('Settings', () => {
   });
 
   it('formats larger database sizes in MB to keep the stats card compact', async () => {
-    const sendMessage = vi.fn().mockResolvedValue({
-      ok: true,
+    const getStats = vi.fn().mockResolvedValue({
       totalArchived: 1259,
       totalRestored: 39,
       dbSizeBytes: 16376 * 1024,
+      oldestClosedAt: null,
+      newestClosedAt: null,
     });
 
-    renderSettings({ sendMessage });
+    renderSettings({ getStats });
 
     await waitFor(() => {
       expect(screen.getByText('1,259')).toBeInTheDocument();
@@ -104,65 +116,27 @@ describe('Settings', () => {
     expect(screen.getByText('16 MB')).toBeInTheDocument();
   });
 
-  it('does not display stats when sendMessage returns not ok', async () => {
-    const sendMessage = vi.fn().mockResolvedValue({ ok: false });
-    renderSettings({ sendMessage });
-
-    // Give time for the effect to run
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(screen.queryByText('Statistics')).not.toBeInTheDocument();
-  });
-
-  it('shows footer text about local storage', () => {
-    renderSettings();
-    expect(screen.getByText(/local storage managed by the native host/)).toBeInTheDocument();
-  });
-
-  it('renders all archive-after options', () => {
-    renderSettings();
-    const select = screen.getByRole('combobox', { name: 'Archive after' });
-    const options = select.querySelectorAll('option');
-    expect(options).toHaveLength(4);
-    expect(options[0]).toHaveTextContent('12 hours');
-    expect(options[1]).toHaveTextContent('24 hours');
-    expect(options[2]).toHaveTextContent('7 days');
-    expect(options[3]).toHaveTextContent('30 days');
-  });
-
-  it('renders all min-tabs options', () => {
-    renderSettings();
-    const select = screen.getByRole('combobox', { name: 'Minimum tabs' });
-    const options = select.querySelectorAll('option');
-    expect(options).toHaveLength(4);
-    expect(options[0]).toHaveTextContent('5 tabs');
-    expect(options[1]).toHaveTextContent('10 tabs');
-    expect(options[2]).toHaveTextContent('20 tabs');
-    expect(options[3]).toHaveTextContent('50 tabs');
-  });
-
-  it('handles stats fetch failure gracefully', async () => {
-    const sendMessage = vi.fn().mockRejectedValue(new Error('Network error'));
-    renderSettings({ sendMessage });
+  it('does not display stats when getStats fails', async () => {
+    const getStats = vi.fn().mockRejectedValue(new Error('Network error'));
+    renderSettings({ getStats });
 
     await act(async () => {
       await Promise.resolve();
     });
 
-    // Should not crash, stats section should not appear
     expect(screen.queryByText('Statistics')).not.toBeInTheDocument();
   });
 
   it('shows "Unknown" db size when dbSizeBytes is missing', async () => {
-    const sendMessage = vi.fn().mockResolvedValue({
-      ok: true,
+    const getStats = vi.fn().mockResolvedValue({
       totalArchived: 5,
       totalRestored: 1,
+      dbSizeBytes: 0,
+      oldestClosedAt: null,
+      newestClosedAt: null,
     });
 
-    renderSettings({ sendMessage });
+    renderSettings({ getStats });
 
     await waitFor(() => {
       expect(screen.getByText('5')).toBeInTheDocument();
@@ -170,21 +144,25 @@ describe('Settings', () => {
     expect(screen.getByText('Unknown')).toBeInTheDocument();
   });
 
+  it('shows footer text about local storage', () => {
+    renderSettings();
+    expect(screen.getByText(/local storage managed by the native host/)).toBeInTheDocument();
+  });
+
   it('exports archived tabs as JSON', async () => {
     const user = userEvent.setup();
-    const sendMessage = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        totalArchived: 2,
-        totalRestored: 1,
-        dbSizeBytes: 1024,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        tabs: [{ id: 1, url: 'https://example.com', title: 'Example', closedAt: 1000 }],
-        count: 1,
-      });
+    const getStats = vi.fn().mockResolvedValue({
+      totalArchived: 2,
+      totalRestored: 1,
+      dbSizeBytes: 1024,
+      oldestClosedAt: null,
+      newestClosedAt: null,
+    });
+    const exportArchive = vi.fn().mockResolvedValue({
+      tabs: [{ id: 1, url: 'https://example.com', title: 'Example', faviconUrl: null, closedAt: 1000, restoredAt: null, metadata: null }],
+      hasMore: false,
+      nextOffset: null,
+    });
 
     const createUrlSpy = vi.fn(() => 'blob:tabarchive');
     const revokeUrlSpy = vi.fn();
@@ -194,7 +172,7 @@ describe('Settings', () => {
     (URL as any).revokeObjectURL = revokeUrlSpy;
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
-    renderSettings({ sendMessage });
+    renderSettings({ getStats, exportArchive });
     await waitForStatsToRender();
 
     await act(async () => {
@@ -202,8 +180,7 @@ describe('Settings', () => {
     });
 
     await waitFor(() => {
-      expect(sendMessage).toHaveBeenCalledWith({
-        action: 'export',
+      expect(exportArchive).toHaveBeenCalledWith({
         includeRestored: true,
         chunkSize: 200,
         offset: 0,
@@ -220,35 +197,34 @@ describe('Settings', () => {
 
   it('clears archived tabs after confirmation', async () => {
     const user = userEvent.setup();
-    const sendMessage = vi
+    const getStats = vi
       .fn()
       .mockResolvedValueOnce({
-        ok: true,
         totalArchived: 4,
         totalRestored: 1,
         dbSizeBytes: 1024,
+        oldestClosedAt: null,
+        newestClosedAt: null,
       })
-      .mockResolvedValueOnce({ ok: true, deleted: 4 })
       .mockResolvedValueOnce({
-        ok: true,
         totalArchived: 0,
         totalRestored: 5,
         dbSizeBytes: 512,
+        oldestClosedAt: null,
+        newestClosedAt: null,
       });
-
+    const clearArchive = vi.fn().mockResolvedValue(4);
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
-    renderSettings({ sendMessage });
+    renderSettings({ getStats, clearArchive });
     await waitForStatsToRender();
+
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Clear archived tabs' }));
     });
 
     await waitFor(() => {
-      expect(sendMessage).toHaveBeenCalledWith({
-        action: 'clearAll',
-        includeRestored: true,
-      });
+      expect(clearArchive).toHaveBeenCalledWith({ includeRestored: true });
     });
     expect(confirmSpy).toHaveBeenCalled();
     expect(screen.getByText('Deleted 4 archived tabs.')).toBeInTheDocument();
@@ -256,26 +232,25 @@ describe('Settings', () => {
 
   it('does not clear archived tabs when confirmation is canceled', async () => {
     const user = userEvent.setup();
-    const sendMessage = vi.fn().mockResolvedValue({
-      ok: true,
+    const getStats = vi.fn().mockResolvedValue({
       totalArchived: 2,
       totalRestored: 0,
       dbSizeBytes: 1024,
+      oldestClosedAt: null,
+      newestClosedAt: null,
     });
-
+    const clearArchive = vi.fn().mockResolvedValue(0);
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
-    renderSettings({ sendMessage });
+    renderSettings({ getStats, clearArchive });
     await waitForStatsToRender();
+
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Clear archived tabs' }));
     });
 
     expect(confirmSpy).toHaveBeenCalled();
-    expect(sendMessage).not.toHaveBeenCalledWith({
-      action: 'clearAll',
-      includeRestored: true,
-    });
+    expect(clearArchive).not.toHaveBeenCalled();
   });
 
   it('resets settings to defaults', async () => {

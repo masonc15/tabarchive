@@ -1,14 +1,22 @@
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import type { AppSettings } from '../types';
+import type {
+  AppSettings,
+  ArchiveStats,
+  ExportArchiveOptions,
+  ExportedArchivedTab,
+  PaginatedResult,
+} from '../types';
 
 interface SettingsProps {
   settings: AppSettings;
   onChange: (settings: AppSettings) => void;
-  sendMessage: (msg: Record<string, unknown>) => Promise<any>;
+  getStats: () => Promise<ArchiveStats>;
+  exportArchive: (options: ExportArchiveOptions) => Promise<PaginatedResult<ExportedArchivedTab>>;
+  clearArchive: (options: { includeRestored: boolean }) => Promise<number>;
 }
 
-interface Stats {
+interface DisplayStats {
   totalArchived: number;
   totalRestored: number;
   dbSize: string;
@@ -62,24 +70,30 @@ function formatDbSize(bytes?: number) {
   return `${formattedValue} ${units[unitIndex]}`;
 }
 
-export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
-  const [stats, setStats] = useState<Stats | null>(null);
+export function Settings({
+  settings,
+  onChange,
+  getStats,
+  exportArchive,
+  clearArchive,
+}: SettingsProps) {
+  const [stats, setStats] = useState<DisplayStats | null>(null);
   const [exporting, setExporting] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const refreshStats = useCallback(async () => {
-    const response = await sendMessage({ action: 'stats' });
-    if (!response?.ok) {
-      return;
+    try {
+      const nextStats = await getStats();
+      setStats({
+        totalArchived: nextStats.totalArchived,
+        totalRestored: nextStats.totalRestored,
+        dbSize: formatDbSize(nextStats.dbSizeBytes),
+      });
+    } catch {
+      setStats(null);
     }
-
-    setStats({
-      totalArchived: response.totalArchived ?? 0,
-      totalRestored: response.totalRestored ?? 0,
-      dbSize: formatDbSize(response.dbSizeBytes),
-    });
-  }, [sendMessage]);
+  }, [getStats]);
 
   useEffect(() => {
     refreshStats().catch(() => {});
@@ -106,7 +120,7 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
     setExporting(true);
     setActionMessage(null);
     try {
-      const allTabs: Array<Record<string, unknown>> = [];
+      const allTabs: ExportedArchivedTab[] = [];
       let offset = 0;
       let loops = 0;
 
@@ -116,19 +130,13 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
           throw new Error('Export exceeded pagination safety limit');
         }
 
-        const response = await sendMessage({
-          action: 'export',
+        const response = await exportArchive({
           includeRestored: true,
           chunkSize: EXPORT_CHUNK_SIZE,
           offset,
         });
 
-        if (!response?.ok) {
-          throw new Error(response?.error || 'Export failed');
-        }
-
-        const tabs = Array.isArray(response.tabs) ? response.tabs : [];
-        allTabs.push(...tabs);
+        allTabs.push(...response.tabs);
 
         if (!response.hasMore) {
           break;
@@ -183,16 +191,8 @@ export function Settings({ settings, onChange, sendMessage }: SettingsProps) {
     setClearing(true);
     setActionMessage(null);
     try {
-      const response = await sendMessage({
-        action: 'clearAll',
-        includeRestored: true,
-      });
-      if (!response?.ok) {
-        throw new Error(response?.error || 'Failed to clear archive');
-      }
-
+      const deleted = await clearArchive({ includeRestored: true });
       await refreshStats();
-      const deleted = Number(response.deleted) || 0;
       setActionMessage(`Deleted ${deleted.toLocaleString()} archived tabs.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

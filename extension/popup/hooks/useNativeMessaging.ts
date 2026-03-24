@@ -1,51 +1,145 @@
 import { useCallback, useEffect, useState } from 'react';
 import browser from 'webextension-polyfill';
 import { isFirefoxRuntime } from '../../runtime';
-import type { AppSettings, ArchivedTab } from '../types';
+import type {
+  AppSettings,
+  ArchivedTab,
+  ArchiveStats,
+  ClearArchiveOptions,
+  ConnectionState,
+  ExportArchiveOptions,
+  ExportedArchivedTab,
+  PaginatedResult,
+} from '../types';
 
-interface NativeResponse {
-  ok: boolean;
-  error?: string;
-  tabs?: ArchivedTab[];
-  url?: string;
-  settings?: AppSettings;
-  totalArchived?: number;
-  totalRestored?: number;
-  dbSizeBytes?: number;
-  oldestClosedAt?: number | null;
-  newestClosedAt?: number | null;
-  hasMore?: boolean;
-  nextOffset?: number;
-}
+type NativeFailure = {
+  ok: false;
+  error: string;
+};
 
-export interface PaginatedResult {
-  tabs: ArchivedTab[];
-  hasMore: boolean;
-}
+type NativeSuccess = {
+  ok: true;
+  [key: string]: unknown;
+};
 
-interface UseNativeMessagingResult {
-  sendMessage: (message: Record<string, unknown>) => Promise<NativeResponse>;
-  search: (query: string, limit?: number, offset?: number) => Promise<PaginatedResult>;
-  restore: (id: number) => Promise<boolean>;
-  deleteTab: (id: number) => Promise<boolean>;
-  getRecent: (limit?: number, offset?: number) => Promise<PaginatedResult>;
-  getStats: () => Promise<{
-    totalArchived: number;
-    totalRestored: number;
-    dbSizeBytes: number;
-    oldestClosedAt?: number | null;
-    newestClosedAt?: number | null;
-  }>;
+type NativeResponse = NativeFailure | NativeSuccess;
+
+type RequestOptions = {
+  trackConnection: boolean;
+};
+
+const DEFAULT_SETTINGS: AppSettings = {
+  archiveAfterMinutes: 720,
+  paused: false,
+  minTabs: 20,
+};
+
+export interface UseNativeMessagingResult {
+  search: (query: string, limit?: number, offset?: number) => Promise<PaginatedResult<ArchivedTab>>;
+  restore: (id: number) => Promise<void>;
+  deleteTab: (id: number) => Promise<void>;
+  getRecent: (limit?: number, offset?: number) => Promise<PaginatedResult<ArchivedTab>>;
+  getStats: () => Promise<ArchiveStats>;
   getSettings: () => Promise<AppSettings>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>;
-  archiveCurrentTab: () => Promise<boolean>;
-  connected: boolean;
-  error: string | null;
+  archiveCurrentTab: () => Promise<void>;
+  exportArchive: (options: ExportArchiveOptions) => Promise<PaginatedResult<ExportedArchivedTab>>;
+  clearArchive: (options: ClearArchiveOptions) => Promise<number>;
+  connection: ConnectionState;
+}
+
+function normalizeCount(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(parsed));
+}
+
+function normalizeAppSettings(value: Partial<AppSettings> | undefined): AppSettings {
+  const archiveAfterMinutes = Number(value?.archiveAfterMinutes);
+  const minTabs = Number(value?.minTabs);
+
+  return {
+    archiveAfterMinutes: Number.isFinite(archiveAfterMinutes)
+      ? Math.max(1, Math.floor(archiveAfterMinutes))
+      : DEFAULT_SETTINGS.archiveAfterMinutes,
+    paused: typeof value?.paused === 'boolean' ? value.paused : DEFAULT_SETTINGS.paused,
+    minTabs: Number.isFinite(minTabs) ? Math.max(0, Math.floor(minTabs)) : DEFAULT_SETTINGS.minTabs,
+  };
+}
+
+function normalizeOptionalTimestamp(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return Math.max(0, Math.floor(parsed));
+}
+
+function normalizeFaviconUrl(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function normalizeArchivedTab(value: unknown): ArchivedTab | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const rawTab = value as Record<string, unknown>;
+  const id = normalizeCount(rawTab.id);
+  const url = typeof rawTab.url === 'string' ? rawTab.url : '';
+
+  if (id <= 0 || !url) {
+    return null;
+  }
+
+  return {
+    id,
+    url,
+    title: typeof rawTab.title === 'string' && rawTab.title ? rawTab.title : url,
+    faviconUrl: normalizeFaviconUrl(rawTab.faviconUrl),
+    closedAt: normalizeCount(rawTab.closedAt),
+  };
+}
+
+function normalizeExportedArchivedTab(value: unknown): ExportedArchivedTab | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const rawTab = value as Record<string, unknown>;
+  const baseTab = normalizeArchivedTab(rawTab);
+  if (!baseTab) {
+    return null;
+  }
+
+  return {
+    ...baseTab,
+    restoredAt: normalizeOptionalTimestamp(rawTab.restoredAt),
+    metadata: rawTab.metadata ?? null,
+  };
+}
+
+function normalizePaginatedResult<T>(
+  response: NativeSuccess,
+  normalizeItem: (value: unknown) => T | null,
+): PaginatedResult<T> {
+  const tabs = Array.isArray(response.tabs)
+    ? response.tabs.map(normalizeItem).filter((tab): tab is T => tab !== null)
+    : [];
+
+  return {
+    tabs,
+    hasMore: response.hasMore === true,
+    nextOffset: response.hasMore === true && typeof response.nextOffset === 'number'
+      ? response.nextOffset
+      : null,
+  };
 }
 
 export function useNativeMessaging(): UseNativeMessagingResult {
-  const [connected, setConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [connection, setConnection] = useState<ConnectionState>({ status: 'checking' });
 
   const normalizeNativeError = useCallback((message: string) => {
     if (isFirefoxRuntime() && /No such native application tabarchive/i.test(message)) {
@@ -59,17 +153,19 @@ export function useNativeMessaging(): UseNativeMessagingResult {
     async (message: Record<string, unknown>): Promise<NativeResponse> => {
       try {
         const rawResponse = await browser.runtime.sendMessage(message);
-        const response = (rawResponse as NativeResponse | undefined) || {
+        const response = (rawResponse as NativeResponse | undefined) ?? {
           ok: false,
           error: 'No response',
         };
-        if (response.error) {
-          return {
-            ...response,
-            error: normalizeNativeError(response.error),
-          };
+
+        if (response.ok === true) {
+          return response;
         }
-        return response;
+
+        return {
+          ok: false,
+          error: normalizeNativeError(response.error || 'Unknown error'),
+        };
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         return { ok: false, error: normalizeNativeError(errorMessage) };
@@ -78,131 +174,133 @@ export function useNativeMessaging(): UseNativeMessagingResult {
     [normalizeNativeError],
   );
 
-  const sendMessage = useCallback(
-    async (message: Record<string, unknown>): Promise<NativeResponse> => {
+  const request = useCallback(
+    async (
+      message: Record<string, unknown>,
+      { trackConnection }: RequestOptions,
+    ): Promise<NativeSuccess> => {
       const response = await rawSendMessage(message);
-      if (response?.error) {
-        setError(response.error);
-      } else {
-        setError(null);
+
+      if (response.ok) {
+        if (trackConnection) {
+          setConnection({ status: 'connected' });
+        }
+        return response;
       }
-      return response;
+
+      if (trackConnection) {
+        setConnection({ status: 'disconnected', message: response.error });
+      }
+      throw new Error(response.error);
     },
     [rawSendMessage],
   );
 
-  const sendMessageSilently = useCallback(
-    async (message: Record<string, unknown>): Promise<NativeResponse> => {
-      try {
-        return await rawSendMessage(message);
-      } catch (err) {
-        return {
-          ok: false,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        };
-      }
-    },
-    [rawSendMessage],
+  const requestTracked = useCallback(
+    (message: Record<string, unknown>) => request(message, { trackConnection: true }),
+    [request],
+  );
+
+  const requestLocal = useCallback(
+    (message: Record<string, unknown>) => request(message, { trackConnection: false }),
+    [request],
   );
 
   const search = useCallback(
-    async (query: string, limit = 100, offset = 0): Promise<PaginatedResult> => {
-      const response = await sendMessage({ action: 'search', query, limit, offset });
-      return {
-        tabs: response.ok && response.tabs ? response.tabs : [],
-        hasMore: response.hasMore === true,
-      };
+    async (query: string, limit = 100, offset = 0): Promise<PaginatedResult<ArchivedTab>> => {
+      const response = await requestTracked({ action: 'search', query, limit, offset });
+      return normalizePaginatedResult(response, normalizeArchivedTab);
     },
-    [sendMessage],
+    [requestTracked],
   );
 
   const restore = useCallback(
-    async (id: number): Promise<boolean> => {
-      const response = await sendMessage({ action: 'restore', id });
-      return response.ok === true;
+    async (id: number): Promise<void> => {
+      await requestTracked({ action: 'restore', id });
     },
-    [sendMessage],
+    [requestTracked],
   );
 
   const deleteTab = useCallback(
-    async (id: number): Promise<boolean> => {
-      const response = await sendMessage({ action: 'delete', id });
-      return response.ok === true;
+    async (id: number): Promise<void> => {
+      await requestTracked({ action: 'delete', id });
     },
-    [sendMessage],
+    [requestTracked],
   );
 
   const getRecent = useCallback(
-    async (limit = 100, offset = 0): Promise<PaginatedResult> => {
-      const response = await sendMessage({ action: 'recent', limit, offset });
-      return {
-        tabs: response.ok && response.tabs ? response.tabs : [],
-        hasMore: response.hasMore === true,
-      };
+    async (limit = 100, offset = 0): Promise<PaginatedResult<ArchivedTab>> => {
+      const response = await requestTracked({ action: 'recent', limit, offset });
+      return normalizePaginatedResult(response, normalizeArchivedTab);
     },
-    [sendMessage],
+    [requestTracked],
   );
 
-  const getStats = useCallback(async () => {
-    const response = await sendMessage({ action: 'stats' });
+  const getStats = useCallback(async (): Promise<ArchiveStats> => {
+    const response = await requestTracked({ action: 'stats' });
     return {
-      totalArchived: response.totalArchived || 0,
-      totalRestored: response.totalRestored || 0,
-      dbSizeBytes: response.dbSizeBytes || 0,
-      oldestClosedAt: response.oldestClosedAt,
-      newestClosedAt: response.newestClosedAt,
+      totalArchived: normalizeCount(response.totalArchived),
+      totalRestored: normalizeCount(response.totalRestored),
+      dbSizeBytes: normalizeCount(response.dbSizeBytes),
+      oldestClosedAt: normalizeOptionalTimestamp(response.oldestClosedAt),
+      newestClosedAt: normalizeOptionalTimestamp(response.newestClosedAt),
     };
-  }, [sendMessage]);
+  }, [requestTracked]);
 
   const getSettings = useCallback(async (): Promise<AppSettings> => {
-    const response = await sendMessageSilently({ action: 'getSettings' });
-    return (
-      response.settings || {
-        archiveAfterMinutes: 720,
-        paused: false,
-        minTabs: 20,
-      }
-    );
-  }, [sendMessageSilently]);
+    try {
+      const response = await requestLocal({ action: 'getSettings' });
+      return normalizeAppSettings(response.settings as Partial<AppSettings> | undefined);
+    } catch {
+      return { ...DEFAULT_SETTINGS };
+    }
+  }, [requestLocal]);
 
   const updateSettings = useCallback(
     async (settings: Partial<AppSettings>): Promise<AppSettings> => {
-      const response = await sendMessageSilently({ action: 'updateSettings', settings });
-      return (
-        response.settings || {
-          archiveAfterMinutes: 720,
-          paused: false,
-          minTabs: 20,
-        }
-      );
+      try {
+        const response = await requestLocal({ action: 'updateSettings', settings });
+        return normalizeAppSettings(response.settings as Partial<AppSettings> | undefined);
+      } catch {
+        return { ...DEFAULT_SETTINGS };
+      }
     },
-    [sendMessageSilently],
+    [requestLocal],
   );
 
-  const archiveCurrentTab = useCallback(async (): Promise<boolean> => {
-    const response = await sendMessage({ action: 'archiveTab' });
-    return response.ok === true;
-  }, [sendMessage]);
+  const archiveCurrentTab = useCallback(async (): Promise<void> => {
+    await requestTracked({ action: 'archiveTab' });
+  }, [requestTracked]);
+
+  const exportArchive = useCallback(
+    async (options: ExportArchiveOptions): Promise<PaginatedResult<ExportedArchivedTab>> => {
+      const response = await requestTracked({
+        action: 'export',
+        includeRestored: options.includeRestored,
+        chunkSize: options.chunkSize,
+        offset: options.offset,
+      });
+      return normalizePaginatedResult(response, normalizeExportedArchivedTab);
+    },
+    [requestTracked],
+  );
+
+  const clearArchive = useCallback(
+    async (options: ClearArchiveOptions): Promise<number> => {
+      const response = await requestTracked({
+        action: 'clearAll',
+        includeRestored: options.includeRestored,
+      });
+      return normalizeCount(response.deleted);
+    },
+    [requestTracked],
+  );
 
   useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const response = await sendMessage({ action: 'stats' });
-        setConnected(response.ok === true);
-        if (!response.ok && response.error) {
-          setError(response.error);
-        }
-      } catch (err) {
-        setConnected(false);
-        setError(err instanceof Error ? err.message : 'Failed to connect');
-      }
-    };
-
-    checkConnection();
-  }, [sendMessage]);
+    getStats().catch(() => {});
+  }, [getStats]);
 
   return {
-    sendMessage,
     search,
     restore,
     deleteTab,
@@ -211,7 +309,8 @@ export function useNativeMessaging(): UseNativeMessagingResult {
     getSettings,
     updateSettings,
     archiveCurrentTab,
-    connected,
-    error,
+    exportArchive,
+    clearArchive,
+    connection,
   };
 }

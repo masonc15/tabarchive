@@ -1,8 +1,17 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { UseNativeMessagingResult } from '../popup/hooks/useNativeMessaging';
 import { App } from '../popup/popup';
+import type {
+  AppSettings,
+  ArchiveStats,
+  ArchivedTab,
+  ConnectionState,
+  ExportedArchivedTab,
+  PaginatedResult,
+} from '../popup/types';
 
-const sampleTab = {
+const sampleTab: ArchivedTab = {
   id: 1,
   url: 'https://example.com/page',
   title: 'Example',
@@ -10,28 +19,76 @@ const sampleTab = {
   faviconUrl: 'https://example.com/favicon.ico',
 };
 
-const defaultSettings = {
+const defaultSettings: AppSettings = {
   archiveAfterMinutes: 720,
   paused: false,
   minTabs: 20,
 };
 
-function createMocks(overrides: Record<string, unknown> = {}) {
-  const mocks = {
-    sendMessage: vi.fn().mockResolvedValue({ ok: true }),
-    search: vi.fn().mockResolvedValue({ tabs: [], hasMore: false }),
-    restore: vi.fn().mockResolvedValue(false),
-    deleteTab: vi.fn(),
-    getRecent: vi.fn().mockResolvedValue({ tabs: [sampleTab], hasMore: false }),
-    getStats: vi.fn(),
+const defaultStats: ArchiveStats = {
+  totalArchived: 1,
+  totalRestored: 0,
+  dbSizeBytes: 1024,
+  oldestClosedAt: null,
+  newestClosedAt: null,
+};
+
+const defaultRecentResult: PaginatedResult<ArchivedTab> = {
+  tabs: [sampleTab],
+  hasMore: false,
+  nextOffset: null,
+};
+
+const emptyExportResult: PaginatedResult<ExportedArchivedTab> = {
+  tabs: [],
+  hasMore: false,
+  nextOffset: null,
+};
+
+type MockedHookResult = {
+  search: ReturnType<typeof vi.fn>;
+  restore: ReturnType<typeof vi.fn>;
+  deleteTab: ReturnType<typeof vi.fn>;
+  getRecent: ReturnType<typeof vi.fn>;
+  getStats: ReturnType<typeof vi.fn>;
+  getSettings: ReturnType<typeof vi.fn>;
+  updateSettings: ReturnType<typeof vi.fn>;
+  archiveCurrentTab: ReturnType<typeof vi.fn>;
+  exportArchive: ReturnType<typeof vi.fn>;
+  clearArchive: ReturnType<typeof vi.fn>;
+  connection: ConnectionState;
+};
+
+function createMocks(overrides: Partial<MockedHookResult> = {}) {
+  const mocks: MockedHookResult = {
+    search: vi.fn().mockResolvedValue({ tabs: [], hasMore: false, nextOffset: null }),
+    restore: vi.fn().mockResolvedValue(undefined),
+    deleteTab: vi.fn().mockResolvedValue(undefined),
+    getRecent: vi.fn().mockResolvedValue(defaultRecentResult),
+    getStats: vi.fn().mockResolvedValue(defaultStats),
     getSettings: vi.fn().mockResolvedValue(defaultSettings),
     updateSettings: vi.fn().mockResolvedValue(defaultSettings),
-    archiveCurrentTab: vi.fn(),
-    connected: true as boolean,
-    error: null as string | null,
+    archiveCurrentTab: vi.fn().mockResolvedValue(undefined),
+    exportArchive: vi.fn().mockResolvedValue(emptyExportResult),
+    clearArchive: vi.fn().mockResolvedValue(0),
+    connection: { status: 'connected' },
     ...overrides,
   };
-  const hook = () => mocks;
+
+  const hook = (): UseNativeMessagingResult => ({
+    search: mocks.search as UseNativeMessagingResult['search'],
+    restore: mocks.restore as UseNativeMessagingResult['restore'],
+    deleteTab: mocks.deleteTab as UseNativeMessagingResult['deleteTab'],
+    getRecent: mocks.getRecent as UseNativeMessagingResult['getRecent'],
+    getStats: mocks.getStats as UseNativeMessagingResult['getStats'],
+    getSettings: mocks.getSettings as UseNativeMessagingResult['getSettings'],
+    updateSettings: mocks.updateSettings as UseNativeMessagingResult['updateSettings'],
+    archiveCurrentTab: mocks.archiveCurrentTab as UseNativeMessagingResult['archiveCurrentTab'],
+    exportArchive: mocks.exportArchive as UseNativeMessagingResult['exportArchive'],
+    clearArchive: mocks.clearArchive as UseNativeMessagingResult['clearArchive'],
+    connection: mocks.connection,
+  });
+
   return { mocks, hook };
 }
 
@@ -41,17 +98,23 @@ vi.mock('../popup/components/TabList', () => ({
     loading,
     onRestore,
   }: {
-    tabs: any[];
+    tabs: ArchivedTab[];
     loading: boolean;
-    onRestore: (t: any) => Promise<boolean>;
+    onRestore: (tab: ArchivedTab) => Promise<void> | void;
     loadMore: () => void;
     hasMore: boolean;
     loadingMore: boolean;
   }) => (
     <div data-testid="tab-list" data-loading={loading}>
-      {tabs.map((t) => (
-        <button type="button" key={t.id} onClick={() => onRestore(t)}>
-          {t.title}
+      {tabs.map((tab) => (
+        <button
+          type="button"
+          key={tab.id}
+          onClick={() => {
+            void Promise.resolve(onRestore(tab)).catch(() => {});
+          }}
+        >
+          {tab.title}
         </button>
       ))}
     </div>
@@ -65,13 +128,13 @@ vi.mock('../popup/components/SearchBar', () => ({
     disabled,
   }: {
     value: string;
-    onChange: (q: string) => void;
+    onChange: (query: string) => void;
     disabled: boolean;
   }) => (
     <input
       data-testid="search-bar"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(event) => onChange(event.target.value)}
       disabled={disabled}
       placeholder="Search"
     />
@@ -109,7 +172,12 @@ describe('Popup App', () => {
 
   it('does not remove tab from list when restore fails', async () => {
     const browserMock = (globalThis as any).__browserMock__;
-    const { mocks, hook } = createMocks();
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { mocks, hook } = createMocks({
+      restore: vi
+        .fn()
+        .mockRejectedValue(new Error('The archive entry could not be updated.')),
+    });
 
     await act(async () => {
       render(<App useNativeMessagingHook={hook} />);
@@ -120,19 +188,20 @@ describe('Popup App', () => {
 
     expect(screen.getByText('Example')).toBeInTheDocument();
 
-    const restoreButton = screen.getByRole('button', { name: 'Example' });
     act(() => {
-      fireEvent.click(restoreButton);
+      fireEvent.click(screen.getByRole('button', { name: 'Example' }));
     });
 
     await waitFor(() => {
-      expect(mocks.restore).toHaveBeenCalled();
+      expect(mocks.restore).toHaveBeenCalledWith(1);
     });
     expect(screen.getByText('Example')).toBeInTheDocument();
     expect(browserMock.tabs.create).toHaveBeenCalledWith({ url: 'https://example.com/page' });
     expect(
       screen.getByText('Restore failed: The archive entry could not be updated.'),
     ).toBeInTheDocument();
+
+    consoleErrorSpy.mockRestore();
   });
 
   it('does not call restore when tab creation fails', async () => {
@@ -140,7 +209,7 @@ describe('Popup App', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     browserMock.tabs.create.mockRejectedValueOnce(new Error('Blocked URL'));
     const { mocks, hook } = createMocks({
-      restore: vi.fn().mockResolvedValue(true),
+      restore: vi.fn().mockResolvedValue(undefined),
     });
 
     await act(async () => {
@@ -171,7 +240,7 @@ describe('Popup App', () => {
       name: 'Tab Archive',
       browser_specific_settings: { gecko: { id: 'tabarchive@masonc15.github.io' } },
     });
-    const localFileTab = {
+    const localFileTab: ArchivedTab = {
       id: 2,
       url: 'file:///Users/colin/tmp/claude-sessions-playground.html',
       title: 'Local File',
@@ -179,8 +248,12 @@ describe('Popup App', () => {
       faviconUrl: null,
     };
     const { mocks, hook } = createMocks({
-      getRecent: vi.fn().mockResolvedValue({ tabs: [localFileTab], hasMore: false }),
-      restore: vi.fn().mockResolvedValue(true),
+      getRecent: vi.fn().mockResolvedValue({
+        tabs: [localFileTab],
+        hasMore: false,
+        nextOffset: null,
+      }),
+      restore: vi.fn().mockResolvedValue(undefined),
     });
 
     await act(async () => {
@@ -213,12 +286,14 @@ describe('Popup App', () => {
       await Promise.resolve();
     });
 
-    expect(mocks.getRecent).toHaveBeenCalled();
+    expect(mocks.getRecent).toHaveBeenCalledWith(100);
     expect(screen.getByText('Example')).toBeInTheDocument();
   });
 
   it('loads settings on mount regardless of native host connectivity', async () => {
-    const { mocks, hook } = createMocks();
+    const { mocks, hook } = createMocks({
+      connection: { status: 'disconnected', message: 'Host not found' },
+    });
 
     await act(async () => {
       render(<App useNativeMessagingHook={hook} />);
@@ -281,7 +356,7 @@ describe('Popup App', () => {
   it('removes tab from list on successful restore', async () => {
     const browserMock = (globalThis as any).__browserMock__;
     const { mocks, hook } = createMocks({
-      restore: vi.fn().mockResolvedValue(true),
+      restore: vi.fn().mockResolvedValue(undefined),
     });
 
     await act(async () => {
@@ -305,8 +380,10 @@ describe('Popup App', () => {
     expect(screen.queryByText('Example')).not.toBeInTheDocument();
   });
 
-  it('shows error message when error is set', async () => {
-    const { hook } = createMocks({ error: 'Native host not found' });
+  it('shows error message when the connection is disconnected', async () => {
+    const { hook } = createMocks({
+      connection: { status: 'disconnected', message: 'Native host not found' },
+    });
 
     await act(async () => {
       render(<App useNativeMessagingHook={hook} />);
@@ -315,8 +392,8 @@ describe('Popup App', () => {
     expect(screen.getByText('Native host not found')).toBeInTheDocument();
   });
 
-  it('shows connecting message when not connected and no error', async () => {
-    const { hook } = createMocks({ connected: false, error: null });
+  it('shows connecting message while checking the native host', async () => {
+    const { hook } = createMocks({ connection: { status: 'checking' } });
 
     await act(async () => {
       render(<App useNativeMessagingHook={hook} />);
@@ -325,8 +402,8 @@ describe('Popup App', () => {
     expect(screen.getByText('Connecting to native host...')).toBeInTheDocument();
   });
 
-  it('disables search bar when not connected', async () => {
-    const { hook } = createMocks({ connected: false });
+  it('disables search bar when the native host is not connected yet', async () => {
+    const { hook } = createMocks({ connection: { status: 'checking' } });
 
     await act(async () => {
       render(<App useNativeMessagingHook={hook} />);
@@ -363,8 +440,17 @@ describe('Popup App', () => {
   it('triggers search when search bar value changes', async () => {
     const { mocks, hook } = createMocks({
       search: vi.fn().mockResolvedValue({
-        tabs: [{ id: 2, url: 'https://found.com', title: 'Found', closedAt: Date.now() }],
+        tabs: [
+          {
+            id: 2,
+            url: 'https://found.com',
+            title: 'Found',
+            faviconUrl: null,
+            closedAt: Date.now(),
+          },
+        ],
         hasMore: false,
+        nextOffset: null,
       }),
     });
 
@@ -375,10 +461,8 @@ describe('Popup App', () => {
       await Promise.resolve();
     });
 
-    const searchBar = screen.getByTestId('search-bar');
-
     await act(async () => {
-      fireEvent.change(searchBar, { target: { value: 'found' } });
+      fireEvent.change(screen.getByTestId('search-bar'), { target: { value: 'found' } });
     });
     await act(async () => {
       await Promise.resolve();
@@ -397,9 +481,8 @@ describe('Popup App', () => {
       await Promise.resolve();
     });
 
-    const searchBar = screen.getByTestId('search-bar');
     await act(async () => {
-      fireEvent.change(searchBar, { target: { value: 'test' } });
+      fireEvent.change(screen.getByTestId('search-bar'), { target: { value: 'test' } });
     });
     await act(async () => {
       await Promise.resolve();
@@ -407,17 +490,19 @@ describe('Popup App', () => {
 
     mocks.getRecent.mockClear();
     await act(async () => {
-      fireEvent.change(searchBar, { target: { value: '' } });
+      fireEvent.change(screen.getByTestId('search-bar'), { target: { value: '' } });
     });
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(mocks.getRecent).toHaveBeenCalled();
+    expect(mocks.getRecent).toHaveBeenCalledWith(100);
   });
 
   it('does not fetch tabs when disconnected but still hydrates settings', async () => {
-    const { mocks, hook } = createMocks({ connected: false });
+    const { mocks, hook } = createMocks({
+      connection: { status: 'disconnected', message: 'Host not found' },
+    });
 
     await act(async () => {
       render(<App useNativeMessagingHook={hook} />);

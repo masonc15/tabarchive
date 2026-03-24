@@ -4,7 +4,7 @@ import type { ArchivedTab } from '../types';
 
 interface TabItemProps {
   tab: ArchivedTab;
-  onRestore: (tab: ArchivedTab) => Promise<boolean> | boolean;
+  onRestore: (tab: ArchivedTab) => Promise<void> | void;
 }
 
 function formatTimeAgo(timestamp: number): string {
@@ -27,7 +27,7 @@ function getDomain(url: string): string {
   }
 }
 
-function getSafeFaviconUrl(url?: string | null) {
+function getSafeFaviconUrl(url: string | null) {
   if (typeof url !== 'string' || !url.startsWith('data:')) {
     return null;
   }
@@ -35,46 +35,37 @@ function getSafeFaviconUrl(url?: string | null) {
 }
 
 export function TabItem({ tab, onRestore }: TabItemProps) {
-  const [hovering, setHovering] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const safeFaviconUrl = getSafeFaviconUrl(tab.faviconUrl);
 
   useEffect(() => {
     setRestoring(false);
-  }, []);
+  }, [tab.id]);
 
   const handleRestore = async () => {
     setRestoring(true);
     try {
-      const ok = await onRestore(tab);
-      if (!ok) {
-        setRestoring(false);
-      }
+      await onRestore(tab);
     } catch {
       setRestoring(false);
     }
   };
 
   const handleClick = () => {
-    handleRestore();
+    void handleRestore();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      handleRestore();
+      void handleRestore();
     }
   };
 
   return (
     // biome-ignore lint/a11y/useSemanticElements: interactive card row, converting to button disrupts layout
     <div
-      style={{
-        ...styles.container,
-        ...(hovering ? styles.containerHover : {}),
-      }}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
+      style={styles.container}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       tabIndex={0}
@@ -121,13 +112,10 @@ export function TabItem({ tab, onRestore }: TabItemProps) {
 
       <button
         type="button"
-        style={{
-          ...styles.restoreButton,
-          opacity: hovering || restoring ? 1 : 0,
-        }}
+        style={styles.restoreButton}
         onClick={(e) => {
           e.stopPropagation();
-          handleRestore();
+          void handleRestore();
         }}
         disabled={restoring}
         aria-label="Restore tab"
@@ -165,9 +153,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '10px 16px',
     cursor: 'pointer',
     transition: 'background-color 0.1s ease',
-  },
-  containerHover: {
-    backgroundColor: '#1f1f3a',
   },
   favicon: {
     width: '32px',
@@ -227,7 +212,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'opacity 0.15s ease, background-color 0.1s ease',
+    transition: 'background-color 0.1s ease',
     flexShrink: 0,
   },
   miniSpinner: {

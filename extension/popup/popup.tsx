@@ -64,8 +64,18 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const { sendMessage, search, restore, getRecent, getSettings, updateSettings, connected, error } =
-    useNativeMessagingHook();
+  const {
+    search,
+    restore,
+    getRecent,
+    getSettings,
+    updateSettings,
+    getStats,
+    exportArchive,
+    clearArchive,
+    connection,
+  } = useNativeMessagingHook();
+  const connected = connection.status === 'connected';
 
   React.useEffect(() => {
     void Promise.resolve(browser.runtime.sendMessage({ action: 'popupOpened' })).catch(() => {});
@@ -86,9 +96,11 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
         const result = query.trim() ? await search(query, PAGE_SIZE) : await getRecent(PAGE_SIZE);
         setTabs(result.tabs);
         setHasMore(result.hasMore);
-        offsetRef.current = result.tabs.length;
+        offsetRef.current = result.nextOffset ?? result.tabs.length;
       } catch (err) {
+        const message = err instanceof Error ? err.message : 'Search failed';
         console.error('Search failed:', err);
+        setActionError(message);
       } finally {
         setLoading(false);
       }
@@ -108,7 +120,7 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
         : await getRecent(PAGE_SIZE, offsetRef.current);
       setTabs((prev) => [...prev, ...result.tabs]);
       setHasMore(result.hasMore);
-      offsetRef.current += result.tabs.length;
+      offsetRef.current = result.nextOffset ?? offsetRef.current + result.tabs.length;
     } catch (err) {
       console.error('Load more failed:', err);
     } finally {
@@ -118,13 +130,14 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   }, [search, getRecent]);
 
   const handleRestore = useCallback(
-    async (tab: ArchivedTab): Promise<boolean> => {
+    async (tab: ArchivedTab): Promise<void> => {
       setActionError(null);
 
       const restoreBlockReason = getRestoreBlockReason(tab.url);
       if (restoreBlockReason) {
-        setActionError(`Restore failed: ${restoreBlockReason}`);
-        return false;
+        const message = `Restore failed: ${restoreBlockReason}`;
+        setActionError(message);
+        throw new Error(message);
       }
 
       try {
@@ -132,23 +145,20 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to reopen tab';
         console.error('Tab creation failed:', err);
-        setActionError(`Restore failed: ${message}`);
-        return false;
+        const restoreMessage = `Restore failed: ${message}`;
+        setActionError(restoreMessage);
+        throw new Error(restoreMessage);
       }
 
       try {
-        const ok = await restore(tab.id);
-        if (!ok) {
-          setActionError('Restore failed: The archive entry could not be updated.');
-          return false;
-        }
+        await restore(tab.id);
         setTabs((prev) => prev.filter((t) => t.id !== tab.id));
-        return true;
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         console.error('Restore failed:', err);
-        setActionError(`Restore failed: ${message}`);
-        return false;
+        const restoreMessage = `Restore failed: ${message}`;
+        setActionError(restoreMessage);
+        throw new Error(restoreMessage);
       }
     },
     [restore],
@@ -174,7 +184,7 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
         .then((result) => {
           setTabs(result.tabs);
           setHasMore(result.hasMore);
-          offsetRef.current = result.tabs.length;
+          offsetRef.current = result.nextOffset ?? result.tabs.length;
         })
         .catch((err) => console.error('Failed to load tabs:', err));
     }
@@ -183,6 +193,8 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
   const pauseButtonLabel = settings.paused ? 'Resume archiving' : 'Pause archiving';
   const pauseButtonTitle = settings.paused ? 'Archiving paused' : 'Archiving active';
   const pauseButtonDisabled = !settingsLoaded;
+  const connectionError =
+    connection.status === 'disconnected' ? connection.message : null;
 
   return (
     <div style={styles.container}>
@@ -234,9 +246,9 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
         </nav>
       </header>
 
-      {(actionError || error) && <div style={styles.error}>{actionError || error}</div>}
+      {(actionError || connectionError) && <div style={styles.error}>{actionError || connectionError}</div>}
 
-      {!connected && !(actionError || error) && (
+      {!connected && !(actionError || connectionError) && (
         <div style={styles.connecting}>Connecting to native host...</div>
       )}
 
@@ -255,7 +267,13 @@ export function App({ useNativeMessagingHook = useNativeMessaging }: AppProps = 
       )}
 
       {view === 'settings' && (
-        <Settings settings={settings} onChange={handleSettingsChange} sendMessage={sendMessage} />
+        <Settings
+          settings={settings}
+          onChange={handleSettingsChange}
+          getStats={getStats}
+          exportArchive={exportArchive}
+          clearArchive={clearArchive}
+        />
       )}
     </div>
   );
