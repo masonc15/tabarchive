@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "build": "webpack --mode production",
+    "build:firefox": "webpack --mode production",
     "build:chromium": "TARGET=chromium webpack --mode production",
     "build:test": "TABARCHIVE_TEST=1 TARGET=chromium webpack --mode development",
     "watch": "webpack --mode development --watch",

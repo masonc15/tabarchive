@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 export const extensionRoot = path.resolve(__dirname, '../..');
@@ -22,12 +23,8 @@ export type SeedTab = {
 };
 
 export function buildFirefoxDist(outputDir: string) {
-  execFileSync('npx', ['webpack', '--mode', 'production', '--output-path', outputDir], {
+  execFileSync('npm', ['run', 'build:firefox', '--', '--output-path', outputDir], {
     cwd: extensionRoot,
-    env: {
-      ...process.env,
-      TARGET: 'firefox',
-    },
     stdio: 'pipe',
   });
 }
@@ -90,9 +87,15 @@ conn.close()
 }
 
 export function removeTempRoot(tempRoot: string) {
+  const resolvedTempRoot = path.resolve(tempRoot);
+  const systemTempRoot = `${path.resolve(os.tmpdir())}${path.sep}`;
+  if (!resolvedTempRoot.startsWith(systemTempRoot)) {
+    throw new Error(`Refusing to remove non-temporary path: ${resolvedTempRoot}`);
+  }
+
   try {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    fs.rmSync(resolvedTempRoot, { recursive: true, force: true });
   } catch {
-    execFileSync('rm', ['-rf', tempRoot], { stdio: 'ignore' });
+    execFileSync('rm', ['-rf', resolvedTempRoot], { stdio: 'ignore' });
   }
 }
