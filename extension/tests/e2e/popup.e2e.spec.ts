@@ -1,21 +1,18 @@
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { type BrowserContext, chromium, expect, type Page, test } from '@playwright/test';
+import {
+  nativeHostName,
+  nativeHostPath,
+  removeTempRoot,
+  seedArchivedTabs,
+  type SeedTab,
+} from './tabarchive-e2e-utils';
 
 declare const chrome: any;
 
 const extensionPath = path.resolve(__dirname, '../../dist');
-const nativeHostPath = path.resolve(__dirname, '../../../native/tabarchive-host.py');
-const nativeHostName = 'tabarchive';
-
-type SeedTab = {
-  url: string;
-  title: string;
-  closedAt: number;
-  faviconUrl?: string;
-};
 
 type Harness = {
   context: BrowserContext;
@@ -27,6 +24,7 @@ type Harness = {
 async function launchExtensionContext(
   userDataDir: string,
   homeDir: string,
+  knownExtensionId?: string,
 ): Promise<{ context: BrowserContext; extensionId: string }> {
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: 'chromium',
@@ -37,6 +35,10 @@ async function launchExtensionContext(
     },
     args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
   });
+
+  if (knownExtensionId) {
+    return { context, extensionId: knownExtensionId };
+  }
 
   let serviceWorker = context.serviceWorkers()[0];
   if (!serviceWorker) {
@@ -63,47 +65,6 @@ function writeChromiumNativeHostManifest(userDataDir: string, extensionId: strin
   return manifestPath;
 }
 
-function runPython(script: string, args: string[], homeDir: string) {
-  const result = spawnSync('python3', ['-c', script, ...args], {
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      HOME: homeDir,
-    },
-  });
-  if (result.status !== 0) {
-    throw new Error(
-      [
-        `Python exited with status ${result.status}.`,
-        result.stderr || '(no stderr)',
-        result.stdout || '(no stdout)',
-      ].join('\n'),
-    );
-  }
-}
-
-function seedArchivedTabs(homeDir: string, tabs: SeedTab[]) {
-  const script = `
-import importlib.util
-import json
-import pathlib
-import sys
-
-host_path = pathlib.Path(sys.argv[1])
-tabs = json.loads(sys.argv[2])
-
-spec = importlib.util.spec_from_file_location("tabarchive_host", host_path)
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-
-conn = module.get_connection()
-module.handle_archive(conn, {"tabs": tabs})
-conn.close()
-`;
-
-  runPython(script, [nativeHostPath, JSON.stringify(tabs)], homeDir);
-}
-
 async function createHarness(): Promise<Harness> {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tabarchive-e2e-'));
   const userDataDir = path.join(tempRoot, 'chromium-profile');
@@ -117,13 +78,7 @@ async function createHarness(): Promise<Harness> {
 
   writeChromiumNativeHostManifest(userDataDir, extensionId);
 
-  const secondLaunch = await launchExtensionContext(userDataDir, homeDir);
-  if (secondLaunch.extensionId !== extensionId) {
-    await secondLaunch.context.close();
-    throw new Error(
-      `Extension ID changed across launches: ${extensionId} -> ${secondLaunch.extensionId}`,
-    );
-  }
+  const secondLaunch = await launchExtensionContext(userDataDir, homeDir, extensionId);
 
   return {
     context: secondLaunch.context,
@@ -135,7 +90,7 @@ async function createHarness(): Promise<Harness> {
 
 async function cleanupHarness(harness: Harness) {
   await harness.context.close();
-  fs.rmSync(harness.tempRoot, { recursive: true, force: true });
+  removeTempRoot(harness.tempRoot);
 }
 
 async function sendRuntimeMessage<T = any>(
@@ -194,7 +149,12 @@ test.describe('Tab Archive extension (real native host)', () => {
       await expect(page.getByRole('button', { name: 'Restore tab: Example' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Restore tab: Another' })).toHaveCount(0);
 
+      const restoredPagePromise = harness.context.waitForEvent('page');
       await page.getByRole('button', { name: 'Restore tab: Example' }).click();
+      const restoredPage = await restoredPagePromise;
+      await restoredPage.waitForLoadState('domcontentloaded');
+      expect(restoredPage.url()).toBe('https://example.com/');
+      await restoredPage.close();
       await expect(page.getByRole('button', { name: 'Restore tab: Example' })).toHaveCount(0);
 
       const stats = await sendRuntimeMessage<Record<string, any>>(page, { action: 'stats' });
@@ -229,7 +189,11 @@ test.describe('Tab Archive extension (real native host)', () => {
       expect(settingsResponse?.settings?.archiveAfterMinutes).toBe(1440);
       expect(settingsResponse?.settings?.paused).toBe(true);
 
+      const downloadPromise = page.waitForEvent('download');
       await page.getByRole('button', { name: 'Export archive data' }).click();
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toMatch(/^tabarchive-export-.*\.json$/);
+      await download.path();
       await expect(page.getByText(/Exported .* tabs\./)).toBeVisible();
       const exportResponse = await sendRuntimeMessage<Record<string, any>>(page, {
         action: 'export',
