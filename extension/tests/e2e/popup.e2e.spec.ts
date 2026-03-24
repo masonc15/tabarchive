@@ -21,6 +21,18 @@ type Harness = {
   tempRoot: string;
 };
 
+async function closeContextQuietly(context: BrowserContext | null | undefined) {
+  if (!context) {
+    return;
+  }
+
+  try {
+    await context.close();
+  } catch {
+    // Ignore teardown failures so temp cleanup still runs.
+  }
+}
+
 async function launchExtensionContext(
   userDataDir: string,
   homeDir: string,
@@ -36,16 +48,21 @@ async function launchExtensionContext(
     args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
   });
 
-  if (knownExtensionId) {
-    return { context, extensionId: knownExtensionId };
-  }
+  try {
+    if (knownExtensionId) {
+      return { context, extensionId: knownExtensionId };
+    }
 
-  let serviceWorker = context.serviceWorkers()[0];
-  if (!serviceWorker) {
-    serviceWorker = await context.waitForEvent('serviceworker');
+    let serviceWorker = context.serviceWorkers()[0];
+    if (!serviceWorker) {
+      serviceWorker = await context.waitForEvent('serviceworker');
+    }
+    const extensionId = new URL(serviceWorker.url()).host;
+    return { context, extensionId };
+  } catch (error) {
+    await closeContextQuietly(context);
+    throw error;
   }
-  const extensionId = new URL(serviceWorker.url()).host;
-  return { context, extensionId };
 }
 
 function writeChromiumNativeHostManifest(userDataDir: string, extensionId: string): string {
@@ -72,25 +89,39 @@ async function createHarness(): Promise<Harness> {
   fs.mkdirSync(userDataDir, { recursive: true });
   fs.mkdirSync(homeDir, { recursive: true });
 
-  const firstLaunch = await launchExtensionContext(userDataDir, homeDir);
-  const extensionId = firstLaunch.extensionId;
-  await firstLaunch.context.close();
+  let firstLaunch: { context: BrowserContext; extensionId: string } | null = null;
+  let secondLaunch: { context: BrowserContext; extensionId: string } | null = null;
 
-  writeChromiumNativeHostManifest(userDataDir, extensionId);
+  try {
+    firstLaunch = await launchExtensionContext(userDataDir, homeDir);
+    const extensionId = firstLaunch.extensionId;
+    await firstLaunch.context.close();
+    firstLaunch = null;
 
-  const secondLaunch = await launchExtensionContext(userDataDir, homeDir, extensionId);
+    writeChromiumNativeHostManifest(userDataDir, extensionId);
 
-  return {
-    context: secondLaunch.context,
-    extensionId,
-    homeDir,
-    tempRoot,
-  };
+    secondLaunch = await launchExtensionContext(userDataDir, homeDir, extensionId);
+
+    return {
+      context: secondLaunch.context,
+      extensionId,
+      homeDir,
+      tempRoot,
+    };
+  } catch (error) {
+    await closeContextQuietly(secondLaunch?.context);
+    await closeContextQuietly(firstLaunch?.context);
+    removeTempRoot(tempRoot);
+    throw error;
+  }
 }
 
 async function cleanupHarness(harness: Harness) {
-  await harness.context.close();
-  removeTempRoot(harness.tempRoot);
+  try {
+    await harness.context.close();
+  } finally {
+    removeTempRoot(harness.tempRoot);
+  }
 }
 
 async function sendRuntimeMessage<T = any>(
