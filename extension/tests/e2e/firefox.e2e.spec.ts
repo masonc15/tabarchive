@@ -18,7 +18,6 @@ import {
   getFirefoxNativeManifestPath,
   installFirefoxNativeHost,
   nativeHostName,
-  readFirefoxExtensionUuid,
   removeTempRoot,
   seedArchivedTabs,
 } from './tabarchive-e2e-utils';
@@ -40,6 +39,8 @@ const firefoxBinaryCandidates = [
 ].filter((candidate): candidate is string => Boolean(candidate));
 
 const firefoxBinary = resolveFirefoxBinary();
+const firefoxWidgetIdPrefix = firefoxExtensionId.replace(/[^a-zA-Z0-9_-]/g, '_');
+const firefoxActionButtonId = `${firefoxWidgetIdPrefix}-BAP`;
 
 let firefoxBuildRoot: string | null = null;
 let firefoxDist: string | null = null;
@@ -85,18 +86,48 @@ async function waitForVisible(driver: WebDriver, locator: By, timeoutMs = 15_000
   return element;
 }
 
-async function waitForPopupUrl(profileDir: string) {
+async function withChromeContext<T>(driver: WebDriver, callback: () => Promise<T>) {
+  const previousContext = await (driver as WebDriver & firefox.Driver).getContext();
+  if (previousContext !== firefox.Context.CHROME) {
+    await (driver as WebDriver & firefox.Driver).setContext(firefox.Context.CHROME);
+  }
+
+  try {
+    return await callback();
+  } finally {
+    if (previousContext !== firefox.Context.CHROME) {
+      await (driver as WebDriver & firefox.Driver).setContext(previousContext);
+    }
+  }
+}
+
+async function getBrowserActionPopupUrl(driver: WebDriver) {
   let popupUrl: string | null = null;
 
-  await expect
-    .poll(() => {
-      const uuid = readFirefoxExtensionUuid(profileDir, firefoxExtensionId);
-      popupUrl = uuid ? `moz-extension://${uuid}/popup/popup.html` : null;
-      return popupUrl;
-    }, { timeout: 15_000 })
-    .not.toBeNull();
+  return withChromeContext(driver, async () => {
+    await waitForVisible(driver, By.id('unified-extensions-button'));
+    await driver.findElement(By.id('unified-extensions-button')).click();
+    await waitForVisible(driver, By.id(firefoxActionButtonId));
+    await driver.findElement(By.id(firefoxActionButtonId)).click();
 
-  return popupUrl as string;
+    await expect
+      .poll(
+        async () => {
+          popupUrl = await driver.executeScript(`
+            const win = Services.wm.getMostRecentWindow('navigator:browser');
+            const popupBrowser = Array.from(win.document.querySelectorAll('browser[type="content"]')).find(
+              (browserEl) => browserEl.currentURI?.spec?.includes('/popup/popup.html'),
+            );
+            return popupBrowser?.currentURI?.spec ?? null;
+          `);
+          return popupUrl;
+        },
+        { timeout: 15_000 },
+      )
+      .not.toBeNull();
+
+    return popupUrl as string;
+  });
 }
 
 async function sendRuntimeMessage<T = Record<string, any>>(
@@ -138,7 +169,10 @@ try {
   ) as Promise<T | null>;
 }
 
-async function openPopupPage(driver: WebDriver, popupUrl: string) {
+// Marionette can open the real browser-action popup, but the panel browser is not
+// exposed as a normal browsing context for deeper DOM automation. Once the real
+// popup is verified and its URL is known, the same document is exercised in a tab.
+async function openPopupDocument(driver: WebDriver, popupUrl: string) {
   await driver.get(popupUrl);
   await expect
     .poll(async () => {
@@ -205,6 +239,7 @@ async function createHarness() {
   const options = new firefox.Options()
     .setBinary(firefoxBinary)
     .addArguments('-headless')
+    .addArguments('--remote-allow-system-access')
     .setPreference('browser.download.folderList', 2)
     .setPreference('browser.download.dir', downloadsDir)
     .setPreference('browser.download.useDownloadDir', true)
@@ -247,8 +282,7 @@ async function createHarness() {
     expect(manifest.name).toBe(nativeHostName);
     expect(manifest.allowed_extensions).toContain(firefoxExtensionId);
 
-    const profileDir = driver.getCapabilities().then((caps) => caps.get('moz:profile'));
-    const popupUrl = await waitForPopupUrl(await profileDir);
+    const popupUrl = await getBrowserActionPopupUrl(driver);
 
     return {
       driver,
@@ -293,7 +327,7 @@ test.describe.serial('Tab Archive extension in Firefox', () => {
     firefoxDist = null;
   });
 
-  test('search and restore flow', async () => {
+  test('search and restore flow in popup document', async () => {
     const harness = await createHarness();
 
     try {
@@ -302,7 +336,7 @@ test.describe.serial('Tab Archive extension in Firefox', () => {
         { url: 'https://another.com', title: 'Another', closedAt: Date.now() - 20_000 },
       ]);
 
-      await openPopupPage(harness.driver, harness.popupUrl);
+      await openPopupDocument(harness.driver, harness.popupUrl);
 
       await waitForVisible(harness.driver, By.css(ariaLabelSelector('Restore tab: Example')));
       await waitForVisible(harness.driver, By.css(ariaLabelSelector('Restore tab: Another')));
@@ -365,7 +399,7 @@ test.describe.serial('Tab Archive extension in Firefox', () => {
     }
   });
 
-  test('settings export and clear flow', async () => {
+  test('settings export and clear flow in popup document', async () => {
     const harness = await createHarness();
 
     try {
@@ -374,7 +408,7 @@ test.describe.serial('Tab Archive extension in Firefox', () => {
         { url: 'https://two.example', title: 'Two', closedAt: Date.now() - 30_000 },
       ]);
 
-      await openPopupPage(harness.driver, harness.popupUrl);
+      await openPopupDocument(harness.driver, harness.popupUrl);
 
       await harness.driver.findElement(By.css(ariaLabelSelector('Pause archiving'))).click();
       await waitForVisible(harness.driver, By.css(ariaLabelSelector('Resume archiving')));

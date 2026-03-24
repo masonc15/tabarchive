@@ -89,29 +89,6 @@ conn.close()
   runPython(script, [nativeHostPath, JSON.stringify(tabs)], homeDir);
 }
 
-export function readFirefoxExtensionUuid(profileDir: string, extensionId: string) {
-  const prefsPath = path.join(profileDir, 'prefs.js');
-  if (!fs.existsSync(prefsPath)) {
-    return null;
-  }
-
-  const prefs = fs.readFileSync(prefsPath, 'utf8');
-  const match = prefs.match(
-    /user_pref\("extensions\.webextensions\.uuids", "((?:\\.|[^"])*)"\);/,
-  );
-  if (!match) {
-    return null;
-  }
-
-  try {
-    const rawJson = JSON.parse(`"${match[1]}"`) as string;
-    const uuids = JSON.parse(rawJson) as Record<string, string>;
-    return uuids[extensionId] ?? null;
-  } catch {
-    return null;
-  }
-}
-
 export function removeTempRoot(tempRoot: string) {
   try {
     fs.rmSync(tempRoot, { recursive: true, force: true });
